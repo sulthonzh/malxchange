@@ -24,6 +24,10 @@ _Avoid_: step size, amount precision
 The number of decimal places a Coin is exact to; used for display, validation, and string serialization.
 _Avoid_: decimals, precision
 
+**Halted**:
+A Market state where new Orders are rejected but existing Orders can still be cancelled.
+_Avoid_: disabled, stopped
+
 **Turnover**:
 The quote-side value of a fill: price × amount.
 _Avoid_: volume, notional
@@ -31,6 +35,18 @@ _Avoid_: volume, notional
 **Fill**:
 The execution of some amount of an Order against another Order; produces fee and turnover.
 _Avoid_: trade (a Trade is the market-wide record of a Fill pair), execution
+
+**Maker**:
+The Order resting in the book when a Fill happens; the side providing liquidity.
+_Avoid_: passive order, quoter
+
+**Taker**:
+The Order that crosses the book and removes liquidity; every Fill has exactly one Maker and one Taker.
+_Avoid_: aggressor, active order
+
+**Fee**:
+The charge a Fill levies on each side, taken in the Coin that side receives, at the Market's rate for that side's role.
+_Avoid_: commission, realFee, discountFee
 
 **Order**:
 A member's instruction to buy or sell in a Market at a limit or market price.

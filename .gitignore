@@ -1,0 +1,17 @@
+# Legacy CoinExchange source drop — local reference only, never published.
+# (Also keeps the plaintext credentials in legacy configs out of the repo.)
+/00_framework/
+/01_wallet_rpc/
+/02_App_Android/
+/03_APP_IOS/
+/04_Web_Admin/
+/05_Web_Front/
+/06_ExchangeRobot/
+/09_DOC/
+/README.md
+/DEVELOP.md
+/LICENSE
+/管理后台截图.md
+
+# OS/editor noise
+.DS_Store

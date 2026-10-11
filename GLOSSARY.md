@@ -60,6 +60,14 @@ _Avoid_: plate, ladder, order book
 The published per-price aggregation of one side of a Book.
 _Avoid_: plate, order book
 
+**Ticker**:
+The rolling per-Market summary — last price, 24h range, turnover — published for all Markets on the ticker channel.
+_Avoid_: thumb, CoinThumb, overview
+
+**Kline**:
+An OHLCV bar at a stored interval for a Market; the unit of chart history.
+_Avoid_: candle, candlestick, OHLCV bar
+
 **Warmup**:
 The period after engine start during which a Market's Book is being rebuilt; commands wait and drain once the Market is Ready.
 _Avoid_: boot, initialization, recovery

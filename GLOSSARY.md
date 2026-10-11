@@ -63,3 +63,23 @@ _Avoid_: provider, gateway, SMS (as the generic term)
 **Authenticator**:
 A Member's TOTP binding; mandatory before the first withdrawal and required to confirm sensitive account changes.
 _Avoid_: Google Auth, 2FA, googleState
+
+**Deposit address**:
+A chain address the exchange controls, allocated one per Member per Coin, that receives incoming funds.
+_Avoid_: recharge address, wallet address
+
+**Confirmation**:
+The chain block depth accumulated by a deposit; each Coin sets the depth — its confirmation count — at which the deposit credits the Ledger.
+_Avoid_: block maturity, verification
+
+**Hot wallet**:
+The exchange-controlled wallet whose keys live encrypted on the host; it signs withdrawals and receives sweeps.
+_Avoid_: withdraw wallet, operational wallet
+
+**Cold wallet**:
+The exchange-controlled wallet whose keys are kept offline; it holds funds beyond the hot wallet's operating needs.
+_Avoid_: offline wallet, storage wallet
+
+**Sweep**:
+An exchange-initiated move of chain-side funds: from Member deposit addresses to the hot wallet, or excess hot funds to the cold wallet.
+_Avoid_: collect, consolidation

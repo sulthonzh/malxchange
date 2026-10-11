@@ -1,0 +1,11 @@
+# Dev override: `docker compose -f docker-compose.yaml -f compose.override.yaml up -d postgres redpanda redpanda-setup`
+# (from deploy/, or `make dev-up` from the repo root). Only the stateful
+# infra runs in containers; services and apps run via `go run` / `nuxt dev`
+# against it. Ports bind to loopback only.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redpanda:
+    ports:
+      - "127.0.0.1:9092:29092"

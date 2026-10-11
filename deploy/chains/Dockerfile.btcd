@@ -1,0 +1,10 @@
+# btcd from source. Pure Go; builds natively on arm64/amd64.
+# Watch-only use: deposit watching needs txindex, not a local wallet.
+# The node's JSON-RPC is the interface; no btcctl needed in the image.
+FROM golang:1.26-alpine AS build
+RUN go install github.com/btcsuite/btcd@v0.24.2
+
+FROM alpine:3.21
+COPY --from=build /go/bin /bin
+EXPOSE 8333 8334
+ENTRYPOINT ["btcd"]

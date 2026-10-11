@@ -1,0 +1,29 @@
+# malxchange edge (ADR-0007): Caddy terminates TLS for both apps and the
+# member WebSocket path. Values come from the .env via Caddy's {$ENV}
+# placeholders; the Redpanda Console is deliberately NOT proxied here —
+# it stays bound to the host loopback only (docker compose ps shows the
+# published port; tunnel in with SSH when you need it).
+
+https://{$MAL_DOMAIN} {
+	encode zstd gzip
+
+	# member REST API (issue #24 defines the public paths)
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	# single member WebSocket endpoint (ADR-0011)
+	handle /ws {
+		reverse_proxy api:8080
+	}
+
+	# member web app, SSR (container lands with issue #24)
+	reverse_proxy web:3000
+}
+
+https://{$MAL_ADMIN_DOMAIN} {
+	encode zstd gzip
+
+	# admin app, SSR, REST-only (container lands with issue #25)
+	reverse_proxy admin:3000
+}

@@ -1,0 +1,44 @@
+# Test profile (system black-box seam substrate, spec #20): the same
+# infra services plus deterministically-minable chains — btcd/ltcd in
+# simnet and an EVM devnet (anvil) for ETH/ERC-20. TRC-20 has no light
+# devnet; the stubbed java-tron gRPC service lands with the wallet slice
+# (#22), which defines its behavior.
+#
+# Usage (from deploy/):
+#   docker compose -f docker-compose.yaml -f compose.test.yaml --profile test up -d
+#
+# btcd/ltcd RPC uses the node's own self-signed TLS; probes use https -k.
+services:
+  btcd:
+    profiles: ["test"]
+    command:
+      - --simnet
+      - --txindex
+      - --rpclisten=0.0.0.0:18556
+      - --rpcuser=${MAL_BTCD_RPCUSER:-malxchange}
+      - --rpcpass=${MAL_BTCD_RPCPASSWORD}
+    ports:
+      - "127.0.0.1:18556:18556"
+    volumes: []
+
+  ltcd:
+    profiles: ["test"]
+    command:
+      - --simnet
+      - --txindex
+      - --rpclisten=0.0.0.0:19556
+      - --rpcuser=${MAL_LTCD_RPCUSER:-malxchange}
+      - --rpcpass=${MAL_LTCD_RPCPASSWORD}
+    ports:
+      - "127.0.0.1:19556:19556"
+    volumes: []
+
+  anvil:
+    image: ghcr.io/foundry-rs/foundry:latest
+    profiles: ["test"]
+    restart: unless-stopped
+    # the image entrypoint is /bin/sh -c; bypass it so argv survives
+    entrypoint: ["anvil"]
+    command: ["--host", "0.0.0.0", "--port", "8545"]
+    ports:
+      - "127.0.0.1:8545:8545"

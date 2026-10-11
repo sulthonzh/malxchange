@@ -1,0 +1,63 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint-unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make lint
+      - run: make test
+      - run: make installer-check
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Boot dev infra (postgres + redpanda)
+        run: |
+          sed -e "s/replace-me/$(openssl rand -hex 16)/g" deploy/env.example > deploy/.env
+          docker compose -f deploy/docker-compose.yaml -f deploy/compose.override.yaml up -d --wait postgres redpanda
+          docker compose -f deploy/docker-compose.yaml -f deploy/compose.override.yaml run --rm redpanda-setup
+      - name: Integration tests
+        run: make test-integration
+
+  build-images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the five service images
+        run: cd deploy && docker compose -f docker-compose.yaml build
+
+  test-profile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Boot test profile (simnet btcd/ltcd + EVM devnet)
+        run: |
+          sed -e "s/replace-me/$(openssl rand -hex 16)/g" deploy/env.example > deploy/.env
+          docker compose -f deploy/docker-compose.yaml -f deploy/compose.test.yaml --profile test up -d --wait postgres redpanda btcd ltcd anvil
+          docker compose -f deploy/docker-compose.yaml -f deploy/compose.test.yaml run --rm redpanda-setup
+      - name: Probe the chain RPC endpoints
+        run: |
+          . deploy/.env
+          BTC='{"jsonrpc":"1.0","id":"ci","method":"getblockcount","params":[]}'
+          curl -fsSk -H 'Content-Type: application/json' -u "$MAL_BTCD_RPCUSER:$MAL_BTCD_RPCPASSWORD" --data-binary "$BTC" https://127.0.0.1:18556 | grep -q '"result":0'
+          LTC='{"jsonrpc":"1.0","id":"ci","method":"getblockcount","params":[]}'
+          curl -fsSk -H 'Content-Type: application/json' -u "$MAL_LTCD_RPCUSER:$MAL_LTCD_RPCPASSWORD" --data-binary "$LTC" https://127.0.0.1:19556 | grep -q '"result":0'
+          ETH='{"jsonrpc":"2.0","id":"ci","method":"eth_blockNumber","params":[]}'
+          curl -fsS -H 'Content-Type: application/json' --data-binary "$ETH" http://127.0.0.1:8545 | grep -q '"result":"0x0"'
+      - name: SASL is enforced
+        run: |
+          docker compose -f deploy/docker-compose.yaml exec -T redpanda \
+            rpk topic list 2>&1 | grep -q "SASL is required"

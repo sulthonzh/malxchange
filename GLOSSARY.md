@@ -47,3 +47,19 @@ _Avoid_: member_wallet, wallet (the service), balance table, custody (chain-side
 **Journal**:
 The append-only record of every Ledger movement (deposit, withdrawal, fill settlement, fee, reward, adjustment) with its reason and idempotency key.
 _Avoid_: member_transaction, transaction history, statement
+
+**KYC**:
+The Member identity-verification process and its states (unverified, pending, verified); verified KYC is required before withdrawals.
+_Avoid_: real-name, identity verification, certification
+
+**Verification code**:
+A single-use, purpose-scoped short code with a TTL, delivered on a Code channel to prove control of a contact or confirm a sensitive action.
+_Avoid_: OTP, SMS code, captcha
+
+**Code channel**:
+A transport that delivers Verification codes — email (always on) or an admin-activated messenger/SMS channel. Never a withdrawal factor.
+_Avoid_: provider, gateway, SMS (as the generic term)
+
+**Authenticator**:
+A Member's TOTP binding; mandatory before the first withdrawal and required to confirm sensitive account changes.
+_Avoid_: Google Auth, 2FA, googleState

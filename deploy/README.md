@@ -64,3 +64,13 @@ slices #21/#22/#25 as their tables land; today the phase verifies health.
 The Redpanda Console is bound to `127.0.0.1:8090` only — reach it over
 SSH, never through Caddy. btcd/ltcd (chains profile, default on) need
 ~100GB+ of disk; `--without-chains` installs without them.
+
+## Exchange engine (issue #21)
+
+`cmd/exchange` now runs the real fold: order.command in; trade.fill /
+order.completed / cancel.rejected / market.plate out; per-Market Books
+recovered from Postgres at boot with the initial Depth published.
+Internal status (admin view lands with #25):
+
+    docker run --rm --network malxchange_default curlimages/curl:latest \
+        -s http://exchange:8080/internal/engine/status

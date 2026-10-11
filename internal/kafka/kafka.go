@@ -20,14 +20,20 @@ import (
 )
 
 func clientOpts(cfg config.Kafka) []kgo.Opt {
-	return []kgo.Opt{
+	opts := []kgo.Opt{
 		kgo.SeedBrokers(cfg.Seeds...),
-		kgo.SASL(scram.Sha256(func(context.Context) (scram.Auth, error) {
-			return scram.Auth{User: cfg.User, Pass: cfg.Password}, nil
-		})),
 		kgo.ClientID("malxchange"),
 		kgo.RequestTimeoutOverhead(5 * time.Second),
 	}
+	// SASL on by default (Redpanda enforces it); empty credentials mean
+	// a plain broker — the in-process test broker (kfake) and any local
+	// dev broker run without it.
+	if cfg.User != "" {
+		opts = append(opts, kgo.SASL(scram.Sha256(func(context.Context) (scram.Auth, error) {
+			return scram.Auth{User: cfg.User, Pass: cfg.Password}, nil
+		})))
+	}
+	return opts
 }
 
 // NewProducer returns a client tuned for publishing: idempotent by default
@@ -53,9 +59,7 @@ func NewConsumer(cfg config.Kafka, group string, topics []string, extra ...kgo.O
 	opts := append(clientOpts(cfg),
 		kgo.ConsumerGroup(group),
 		kgo.ConsumeTopics(topics...),
-		kgo.Balancers(kgo.CooperativeStickyBalancer()),
 		kgo.DisableAutoCommit(),
-		kgo.BlockRebalanceOnPoll(),
 	)
 	c, err := kgo.NewClient(opts...)
 	if err != nil {

@@ -37,6 +37,9 @@ type Deps struct {
 	Producer *kgo.Client
 	Outbox   *outbox.Outbox
 	Log      *slog.Logger
+	// Internal is mounted at /internal/ for service-to-service RPC and
+	// admin views (engine status etc.). Compose keeps the port off Caddy.
+	Internal *http.ServeMux
 }
 
 // Extra is service-specific boot logic; nil is valid (skeleton services).
@@ -99,15 +102,23 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 		}
 	}()
 
+	root := http.NewServeMux()
+	root.Handle("/", health.Handler(map[string]health.Check{
+		"postgres": pool.Ping,
+		"redpanda": func(c context.Context) error { return kafka.Ping(c, producer) },
+	}))
+	internalMux := http.NewServeMux()
+	root.Handle("/internal/", http.StripPrefix("/internal", internalMux))
+
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           health.Handler(map[string]health.Check{"postgres": pool.Ping, "redpanda": func(c context.Context) error { return kafka.Ping(c, producer) }}),
+		Handler:           root,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- srv.ListenAndServe() }()
 
-	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log}
+	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log, Internal: internalMux}
 	if extra != nil {
 		if err := extra(ctx, d); err != nil {
 			return fmt.Errorf("extra: %w", err)

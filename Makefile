@@ -41,7 +41,7 @@ test-integration:
 	MAL_TEST_PG_SUPERUSER_PASSWORD=$${MAL_PG_SUPERUSER_PASSWORD} \
 	MAL_TEST_KAFKA_SEEDS=127.0.0.1:9092 \
 	MAL_TEST_KAFKA_USER=$${MAL_KAFKA_USER} MAL_TEST_KAFKA_PASSWORD=$${MAL_KAFKA_PASSWORD} \
-	go test -count=1 -timeout 120s -tags integration ./internal/it/...
+	go test -count=1 -timeout 240s -tags integration ./internal/...
 
 test-profile-up: deploy/.env
 	$(COMPOSE_TEST) --profile test up -d --wait

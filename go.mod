@@ -9,6 +9,7 @@ require (
 	github.com/shopspring/decimal v1.5.0
 	github.com/twmb/franz-go v1.22.1
 	github.com/twmb/franz-go/pkg/kadm v1.19.0
+	github.com/twmb/franz-go/pkg/kfake v0.0.0-20261007040850-d3792b34935a
 )
 
 require (

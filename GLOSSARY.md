@@ -123,3 +123,23 @@ _Avoid_: offline wallet, storage wallet
 **Sweep**:
 An exchange-initiated move of chain-side funds: from Member deposit addresses to the hot wallet, or excess hot funds to the cold wallet.
 _Avoid_: collect, consolidation
+
+**Employee**:
+A staff account that authenticates to the admin app; identified by email, holding exactly one Role. Employees administer Members, Markets, Coins, and custody — they are never Members.
+_Avoid_: admin (as a person), staff, user
+
+**Role**:
+The single Role an Employee holds; a named bundle of Permissions (super-admin, finance, compliance, support) with editable grants over the seeded catalog.
+_Avoid_: department, group, user type
+
+**Permission**:
+A capability string (verb:resource) that exactly one admin endpoint checks; seeded from the endpoint list and read-only everywhere, granted to Roles.
+_Avoid_: menu item, privilege, access right
+
+**Step-up**:
+A fresh TOTP code demanded at action time for fund-moving or credential-changing admin actions, beyond the session's login factor.
+_Avoid_: re-auth, second password, 2FA prompt
+
+**Audit log**:
+The append-only record of every admin mutation and authentication event — actor, action, target, before/after, origin IP — written by middleware, never by individual handlers.
+_Avoid_: access log, operation log, admin log

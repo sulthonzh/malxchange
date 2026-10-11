@@ -52,6 +52,22 @@ _Avoid_: commission, realFee, discountFee
 A member's instruction to buy or sell in a Market at a limit or market price.
 _Avoid_: transaction, position
 
+**Book**:
+A Market's resting Orders in price-time priority, each with its remaining amount; rebuilt from open Orders whenever the engine starts.
+_Avoid_: plate, ladder, order book
+
+**Depth**:
+The published per-price aggregation of one side of a Book.
+_Avoid_: plate, order book
+
+**Warmup**:
+The period after engine start during which a Market's Book is being rebuilt; commands wait and drain once the Market is Ready.
+_Avoid_: boot, initialization, recovery
+
+**Ready**:
+A Market state where the Book is rebuilt and commands are being consumed; engine-internal, with no admin toggle.
+_Avoid_: enabled, started
+
 **Member**:
 An authenticated account that owns wallets, orders, and KYC state.
 _Avoid_: user, customer, account

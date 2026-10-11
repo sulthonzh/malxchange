@@ -39,3 +39,11 @@ _Avoid_: transaction, position
 **Member**:
 An authenticated account that owns wallets, orders, and KYC state.
 _Avoid_: user, customer, account
+
+**Ledger**:
+The single authoritative record of every Member's per-Coin balance (available and frozen), owned and written exclusively by the wallet service. Every fund movement appends a Journal entry.
+_Avoid_: member_wallet, wallet (the service), balance table, custody (chain-side funds)
+
+**Journal**:
+The append-only record of every Ledger movement (deposit, withdrawal, fill settlement, fee, reward, adjustment) with its reason and idempotency key.
+_Avoid_: member_transaction, transaction history, statement

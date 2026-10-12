@@ -182,12 +182,20 @@ func (r *RPC) trades(w http.ResponseWriter, req *http.Request) {
 // tradeLimit parses the limit query parameter: absent = default, anything
 // outside [1, max] is a bad request.
 func tradeLimit(req *http.Request) (int, error) {
+	return parseLimit(req, defaultTradeLimit, maxTradeLimit)
+}
+
+// parseLimit is the shared limit parser behind the trades and Kline
+// listings (same discipline, different defaults): absent = deflt, an
+// integer outside [1, max] answers the one named errBadLimit so callers
+// keep its errors.Is identity.
+func parseLimit(req *http.Request, deflt, max int) (int, error) {
 	raw := req.URL.Query().Get("limit")
 	if raw == "" {
-		return defaultTradeLimit, nil
+		return deflt, nil
 	}
 	n, err := strconv.Atoi(raw)
-	if err != nil || n < 1 || n > maxTradeLimit {
+	if err != nil || n < 1 || n > max {
 		return 0, errBadLimit
 	}
 	return n, nil
@@ -339,15 +347,7 @@ func klineInterval(req *http.Request) (Interval, error) {
 // klineLimit parses the limit query parameter: absent = default, anything
 // outside [1, max] is a bad request.
 func klineLimit(req *http.Request) (int, error) {
-	raw := req.URL.Query().Get("limit")
-	if raw == "" {
-		return defaultKlineLimit, nil
-	}
-	n, err := strconv.Atoi(raw)
-	if err != nil || n < 1 || n > maxKlineLimit {
-		return 0, errBadLimit
-	}
-	return n, nil
+	return parseLimit(req, defaultKlineLimit, maxKlineLimit)
 }
 
 // ticker serves one Market's current rolling 24h summary (last, high,

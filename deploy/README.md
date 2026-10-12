@@ -14,6 +14,7 @@ embedded migrations, and the per-service Postgres schema/role isolation
     make lint               # go vet + gofmt
     make build-images       # build the five service images
     make test-profile-up    # simnet btcd/ltcd + anvil (the E2E seam substrate)
+    make test-profile-probe # health-check the chain nodes (run before chain debugging)
 
 Services run against dev infra with `go run ./cmd/api` (and friends),
 passing the same `MAL_*` env the containers get — read them from
@@ -21,6 +22,26 @@ passing the same `MAL_*` env the containers get — read them from
 
     set -a; . deploy/.env; set +a
     MAL_PG_HOST=127.0.0.1 MAL_KAFKA_SEEDS=127.0.0.1:9092 MAL_PG_PASSWORD=$MAL_PG_PASSWORD_API go run ./cmd/api
+
+### Chain test-profile gotchas
+
+Each of these cost real debugging time; check them before theorising:
+
+- **Recreate, then probe.** A panicked ltcd (e.g. the v0.23.6 versionbits
+  crash on `generate`) latches: every later RPC returns garbage like
+  "Server is already CPU mining" even though nothing is mining. Only a
+  container recreate clears it — `make test-profile-probe` against a
+  freshly recreated node is the only trustworthy reading.
+- **Trust `docker compose ps`, not host listeners.** On macOS/colima the
+  loopback ports (5432, 9092, …) are held by the colima `ssh` mux, so
+  `lsof` shows an `ssh` listener even when the container is down or
+  replaced — a stale forward serves connection resets that look like a
+  dead Postgres.
+- **Pinned node misbehaves → check upstream tags first.** Before local
+  theories about a chain-node bug, list the upstream releases
+  (`api.github.com/repos/<owner>/<repo>/tags`) and diff the pinned source
+  in the Go module cache — the ltcd panic was upstream, and no newer tag
+  existed to bump to.
 
 ## Layout
 

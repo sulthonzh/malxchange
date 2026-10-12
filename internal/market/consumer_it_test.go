@@ -9,6 +9,8 @@ package market
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -65,38 +67,62 @@ func newStack(t *testing.T) *itStack {
 	t.Helper()
 	ctx := context.Background()
 
+	// Unique throwaway DB per test binary: sibling tickets' IT suites run
+	// against the same dev Postgres, and a fixed name would let one
+	// worktree's DROP/recreate pull the floor out from under another's
+	// mid-test run (and cross-contaminate projections).
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	dbName := "malxchange_itm_" + hex.EncodeToString(suffix)
+
 	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
 		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS malxchange_itm WITH (FORCE)`)
-	_, _ = admin.Exec(ctx, `CREATE DATABASE malxchange_itm`)
+	if _, err := admin.Exec(ctx,
+		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
+		t.Fatal(err)
+	}
 	admin.Close()
+	t.Cleanup(func() {
+		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
+			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+		if err != nil {
+			return
+		}
+		defer admin.Close()
+		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
+	})
 
-	mktURL := fmt.Sprintf("postgres://%s:%s@%s:5432/malxchange_itm?sslmode=disable&search_path=market",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost)
+	mktURL := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=market",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName)
 	pool, err := pgxpool.New(ctx, mktURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
 	_, _ = pool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS market`)
-	if err := pgmig.Run(pgURL(t, "market"), migrations.FS, "market"); err != nil {
+	if err := pgmig.Run(pgURL(t, dbName, "market"), migrations.FS, "market"); err != nil {
 		t.Fatalf("market migrations: %v", err)
 	}
 
 	// Wallet schema: fixture-only, so fills can carry a real funded hold
 	// behind both orders. Market itself never reads it (cross-schema
 	// access is denied by design).
-	walletPool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/malxchange_itm?sslmode=disable&search_path=wallet",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+	walletPool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=wallet",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(walletPool.Close)
 	_, _ = walletPool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS wallet`)
-	if err := pgmig.Run(pgURL(t, "wallet"), migrations.FS, "wallet"); err != nil {
+	if err := pgmig.Run(pgURL(t, dbName, "wallet"), migrations.FS, "wallet"); err != nil {
 		t.Fatalf("wallet migrations: %v", err)
 	}
 
@@ -126,13 +152,13 @@ func newStack(t *testing.T) *itStack {
 	return s
 }
 
-func pgURL(t *testing.T, schema string) string {
+func pgURL(t *testing.T, db, schema string) string {
 	t.Helper()
 	u := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW),
 		Host:     itPGHost + ":5432",
-		Path:     "/malxchange_itm",
+		Path:     "/" + db,
 		RawQuery: "sslmode=disable&search_path=" + schema,
 	}
 	return u.String()

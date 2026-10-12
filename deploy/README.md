@@ -98,7 +98,7 @@ Internal status (admin view lands with #25):
     docker run --rm --network malxchange_default curlimages/curl:latest \
         -s http://exchange:8080/internal/engine/status
 
-## Market data projection (issues #29–#32)
+## Market data projection (issues #29–#34)
 
 `cmd/market` consumes `trade.fill` / `market.plate` into the derived
 market schema: sanitized trades, last-known Depth, and the rolling 24h
@@ -109,3 +109,11 @@ answers the same values api will proxy — `GET /internal/trades/{market}`,
 all-markets map `GET /internal/tickers`. Market config arrives on
 `market.updated` (ticket #33) and everything in the schema is rebuildable
 by replay (ticket #34).
+
+A corrupted projection is a routine operation, never surgery:
+`POST /internal/rebuild` (from inside the compose network, like every
+internal endpoint) wipes the derived tables and the inbox, rewinds the
+consumer group to the earliest retained offset, and the ordinary consume
+loop replays `trade.fill` / `market.plate` / `market.updated` back to an
+identical state — the drill the integration tests run verbatim. The
+endpoint is idempotent: a retry after a partial failure is always safe.

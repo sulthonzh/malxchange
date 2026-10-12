@@ -41,10 +41,12 @@ func itCfg(market, zone string, sort int) events.MarketUpdated {
 }
 
 // produceCfg builds and produces one market.updated envelope, keyed by the
-// Market symbol like every Market-ordered event.
-func (s *itStack) produceCfg(t *testing.T, id string, m events.MarketUpdated) {
+// Market symbol like every Market-ordered event. The instant rides the
+// envelope: the copy's updated_at is a pure function of the event stream
+// (ticket #34's rebuild determinism), never the consumer's wall clock.
+func (s *itStack) produceCfg(t *testing.T, id string, at time.Time, m events.MarketUpdated) {
 	t.Helper()
-	_, body, err := events.New(id, m.Market, events.TopicMarketUpdated, time.Now().UTC(), m)
+	_, body, err := events.New(id, m.Market, events.TopicMarketUpdated, at, m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,9 +226,9 @@ func TestBootBurstConvergesCopyAndListing(t *testing.T) {
 	sol := itCfg("SOL/USDT", "innovation", 0)
 	sol.BaseCoin = "SOL"
 
-	s.produceCfg(t, "cfg-burst-btc", btc)
-	s.produceCfg(t, "cfg-burst-eth", eth)
-	s.produceCfg(t, "cfg-burst-sol", sol)
+	s.produceCfg(t, "cfg-burst-btc", time.Now().UTC(), btc)
+	s.produceCfg(t, "cfg-burst-eth", time.Now().UTC(), eth)
+	s.produceCfg(t, "cfg-burst-sol", time.Now().UTC(), sol)
 	s.drain(t)
 
 	want := map[string]events.MarketUpdated{"BTC/USDT": btc, "ETH/USDT": eth, "SOL/USDT": sol}
@@ -246,9 +248,9 @@ func TestBootBurstConvergesCopyAndListing(t *testing.T) {
 	// Redelivery: identical envelopes, same IDs. The inbox drops them, so
 	// the copy neither grows nor even rewrites its rows.
 	before := rowUpdatedAt(t, s, "BTC/USDT")
-	s.produceCfg(t, "cfg-burst-btc", btc)
-	s.produceCfg(t, "cfg-burst-eth", eth)
-	s.produceCfg(t, "cfg-burst-sol", sol)
+	s.produceCfg(t, "cfg-burst-btc", time.Now().UTC(), btc)
+	s.produceCfg(t, "cfg-burst-eth", time.Now().UTC(), eth)
+	s.produceCfg(t, "cfg-burst-sol", time.Now().UTC(), sol)
 	s.drain(t)
 	assertCopy(t, s, want)
 	if after := rowUpdatedAt(t, s, "BTC/USDT"); !after.Equal(before) {
@@ -266,7 +268,7 @@ func TestConfigEditSurfacesWithoutRestart(t *testing.T) {
 
 	btc := itCfg("BTC/USDT", "main", 1)
 	btc.BaseCoin = "BTC"
-	s.produceCfg(t, "cfg-edit-1", btc)
+	s.produceCfg(t, "cfg-edit-1", time.Now().UTC(), btc)
 	s.drain(t)
 	if listing := getListing(t, s); listing[0].TickSize != "0.1" || listing[0].Sort != 1 {
 		t.Fatalf("pre-edit listing row = %+v", listing[0])
@@ -278,7 +280,7 @@ func TestConfigEditSurfacesWithoutRestart(t *testing.T) {
 	btc.Sort = 7
 	btc.Featured = true
 	btc.MinPrice = "1000"
-	s.produceCfg(t, "cfg-edit-2", btc)
+	s.produceCfg(t, "cfg-edit-2", time.Now().UTC(), btc)
 	s.drain(t) // same process, same group — nothing restarted
 
 	listing := getListing(t, s)
@@ -301,8 +303,8 @@ func TestInvisibleMarketDropsFromListingKeepsServing(t *testing.T) {
 	btc.BaseCoin = "BTC"
 	eth := itCfg("ETH/USDT", "innovation", 0)
 	eth.BaseCoin, eth.TickSize, eth.LotSize = "ETH", "0.01", "0.001"
-	s.produceCfg(t, "cfg-flip-btc", btc)
-	s.produceCfg(t, "cfg-flip-eth", eth)
+	s.produceCfg(t, "cfg-flip-btc", time.Now().UTC(), btc)
+	s.produceCfg(t, "cfg-flip-eth", time.Now().UTC(), eth)
 
 	// ETH trades and publishes Depth before the flip, with real funded
 	// holds behind both orders (review checklist). ETH and USDT are seeded
@@ -328,7 +330,7 @@ func TestInvisibleMarketDropsFromListingKeepsServing(t *testing.T) {
 
 	// The flip: ETH goes invisible (fresh envelope, same Market key).
 	eth.Visible = false
-	s.produceCfg(t, "cfg-flip-eth-2", eth)
+	s.produceCfg(t, "cfg-flip-eth-2", time.Now().UTC(), eth)
 	s.drain(t)
 
 	// Out of the listing, row kept (no ghost deletion)…

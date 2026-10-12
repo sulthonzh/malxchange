@@ -127,7 +127,7 @@ func applyEnvelope(ctx context.Context, tx pgx.Tx, d decoded) error {
 	case d.plate != nil:
 		return applyPlate(ctx, tx, d.env, *d.plate)
 	case d.updated != nil:
-		return applyMarketUpdated(ctx, tx, *d.updated)
+		return applyMarketUpdated(ctx, tx, d.env, *d.updated)
 	default:
 		return nil
 	}
@@ -221,10 +221,13 @@ func applyPlate(ctx context.Context, tx pgx.Tx, env events.Envelope, p events.Pl
 // own copy of the Market config. The event is self-contained, so the copy
 // converges by replacement: an idempotent upsert keyed on the Market —
 // redelivery is dropped by the inbox, config churn (a fresh envelope for a
-// known Market) replaces the row in place. No ghost rows: a Market flipped
-// invisible stays in the copy, it only leaves the visible listing (the
-// other market-data endpoints never gate on visibility).
-func applyMarketUpdated(ctx context.Context, tx pgx.Tx, m events.MarketUpdated) error {
+// known Market) replaces the row in place. updated_at carries the event's
+// own instant, never the consumer's wall clock, so the copy stays a pure
+// function of the event stream and a rebuild converges to the identical
+// row (ticket #34). No ghost rows: a Market flipped invisible stays in the
+// copy, it only leaves the visible listing (the other market-data
+// endpoints never gate on visibility).
+func applyMarketUpdated(ctx context.Context, tx pgx.Tx, env events.Envelope, m events.MarketUpdated) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO markets (market, base_coin, quote_coin, base_scale, quote_scale,
 		                     tick_size, lot_size, maker_fee_rate, taker_fee_rate,
@@ -232,7 +235,7 @@ func applyMarketUpdated(ctx context.Context, tx pgx.Tx, m events.MarketUpdated) 
 		                     market_orders_enabled, enabled, visible, sort, zone, featured,
 		                     max_open_orders, ttl_seconds, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-		        $15, $16, $17, $18, $19, $20, $21, $22, now())
+		        $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT (market) DO UPDATE SET
 			base_coin             = EXCLUDED.base_coin,
 			quote_coin            = EXCLUDED.quote_coin,
@@ -255,13 +258,13 @@ func applyMarketUpdated(ctx context.Context, tx pgx.Tx, m events.MarketUpdated) 
 			featured              = EXCLUDED.featured,
 			max_open_orders       = EXCLUDED.max_open_orders,
 			ttl_seconds           = EXCLUDED.ttl_seconds,
-			updated_at            = now()`,
+			updated_at            = EXCLUDED.updated_at`,
 		m.Market, m.BaseCoin, m.QuoteCoin, m.BaseScale, m.QuoteScale,
 		m.TickSize, m.LotSize, nullableNum(m.MakerFeeRate), nullableNum(m.TakerFeeRate),
 		nullableNum(m.MinPrice), nullableNum(m.MaxPrice),
 		nullableNum(m.MinAmount), nullableNum(m.MaxAmount), nullableNum(m.MinTurnover),
 		m.MarketOrdersEnabled, m.Enabled, m.Visible, m.Sort, m.Zone, m.Featured,
-		m.MaxOpenOrders, m.TTLSeconds)
+		m.MaxOpenOrders, m.TTLSeconds, env.OccurredAt)
 	if err != nil {
 		return fmt.Errorf("upsert market %s: %w", m.Market, err)
 	}

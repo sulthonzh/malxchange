@@ -16,23 +16,10 @@ import (
 // the sole writer of the derived schema).
 const ConsumerGroup = "market-projection"
 
-// ConsumeTopics is the projection loop: poll → decode → one transaction
-// (inbox dedupe + derived rows) → commit offsets. Events for a Market ride
-// the Market symbol as record key, so per-Market order is total on the
-// single-partition topics. Any apply error is fatal by design (same
-// contract as the exchange engine and the wallet): the process restarts
-// and Redpanda re-delivers from the committed offset.
-func ConsumeTopics(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client) error {
-	for {
-		fetches := cl.PollRecords(ctx, 500)
-		if fetches.IsClientClosed() || ctx.Err() != nil {
-			return nil
-		}
-		if err := applyFetches(ctx, db, log, cl, fetches); err != nil {
-			return err
-		}
-	}
-}
+// applyFetches is one projection batch: decode → one transaction (inbox
+// dedupe + derived rows) → commit offsets. The projector's Consume loop
+// and the integration drills drive this same function — the rebuild's
+// replay path is exactly the ordinary one (ticket #34).
 
 func applyFetches(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client, fetches kgo.Fetches) error {
 	var batch []decoded

@@ -55,6 +55,7 @@ func TestMain(m *testing.M) {
 type itStack struct {
 	pool     *pgxpool.Pool // search_path=market
 	wallet   *pgxpool.Pool // search_path=wallet, fixture only
+	db       string        // throwaway database name (migration drills)
 	cfg      config.Kafka
 	producer *kgo.Client
 	broker   *kfake.Cluster
@@ -141,13 +142,13 @@ func newStack(t *testing.T) *itStack {
 		t.Fatal(err)
 	}
 	t.Cleanup(producer.Close)
-	for _, topic := range []string{events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated} {
+	for _, topic := range Topics {
 		if err := broker.CreateTopic(topic, 1, nil); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	s := &itStack{pool: pool, wallet: walletPool, cfg: cfg, producer: producer, broker: broker, t: t}
+	s := &itStack{pool: pool, wallet: walletPool, db: dbName, cfg: cfg, producer: producer, broker: broker, t: t}
 	s.startREST()
 	return s
 }
@@ -164,24 +165,32 @@ func pgURL(t *testing.T, db, schema string) string {
 	return u.String()
 }
 
-// startREST mounts the RPC exactly like the boot harness does: a root mux
-// stripping /internal onto the service-internal mux (service.go wiring), so
-// the tests exercise the production URL shape /internal/trades/{market...}.
-func (s *itStack) startREST() {
+// mountRPC mounts the RPC exactly like the boot harness does: a root mux
+// stripping /internal onto the service-internal mux (service.go wiring),
+// so the tests exercise the production URL shape /internal/… — replacing
+// any server mounted before (a drill re-mounts with the projector wired).
+func (s *itStack) mountRPC(rpc *RPC) {
 	s.t.Helper()
+	if s.rest != nil {
+		s.rest.Close()
+	}
 	root := http.NewServeMux()
 	internal := http.NewServeMux()
 	root.Handle("/internal/", http.StripPrefix("/internal", internal))
-	RegisterRPC(internal, &RPC{DB: s.pool})
+	RegisterRPC(internal, rpc)
 	s.rest = httptest.NewServer(root)
 	s.t.Cleanup(s.rest.Close)
 }
 
+// startREST mounts the plain market-data RPC (no rebuild seam).
+func (s *itStack) startREST() {
+	s.mountRPC(&RPC{DB: s.pool})
+}
+
 func (s *itStack) newConsumer(group string) {
 	s.t.Helper()
-	c, err := kafka.NewConsumer(s.cfg, group, []string{
-		events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated,
-	}, kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
+	c, err := kafka.NewConsumer(s.cfg, group, Topics,
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
 	if err != nil {
 		s.t.Fatal(err)
 	}

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/syaikhipin/malxchange/internal/events"
 )
 
 // RPC is the market service's internal surface: the market-data seams the
@@ -28,6 +30,8 @@ func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /markets", r.markets)
 	mux.HandleFunc("GET /trades/{market...}", r.trades)
 	mux.HandleFunc("GET /depth/{market...}", r.depth)
+	mux.HandleFunc("GET /ticker/{market...}", r.ticker)
+	mux.HandleFunc("GET /tickers", r.tickers)
 }
 
 // MarketSummary is one visible Market of the internal listing (ticket #33):
@@ -225,6 +229,44 @@ func (r *RPC) depth(w http.ResponseWriter, req *http.Request) {
 		d.Asks[i], d.Asks[j] = d.Asks[j], d.Asks[i]
 	}
 	writeJSON(w, d)
+}
+
+// ticker serves one Market's current rolling 24h summary (last, high,
+// low, turnover). It answers from the same computation the publish loop
+// puts on the ticker topic (ComputeTicker → FoldTicker), so REST-first
+// bootstrap and the stream can never disagree (ADR-0011). A Market with
+// no in-window Fills — known or unknown — answers the empty summary, and
+// a Market known only through its Depth publishes too.
+func (r *RPC) ticker(w http.ResponseWriter, req *http.Request) {
+	market := req.PathValue("market")
+	t, err := ComputeTicker(req.Context(), r.DB, market, time.Now().UTC())
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, t)
+}
+
+// tickers serves the all-markets map keyed by Market symbol — every known
+// Market (trade history or last-known Depth), each value identical to the
+// single-Market endpoint. Keyed by symbol, never positional.
+func (r *RPC) tickers(w http.ResponseWriter, req *http.Request) {
+	markets, err := knownMarkets(req.Context(), r.DB)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	now := time.Now().UTC()
+	out := make(map[string]events.Ticker, len(markets))
+	for _, m := range markets {
+		t, err := ComputeTicker(req.Context(), r.DB, m, now)
+		if err != nil {
+			writeErr(w, err)
+			return
+		}
+		out[m] = t
+	}
+	writeJSON(w, out)
 }
 
 func writeErr(w http.ResponseWriter, err error) {

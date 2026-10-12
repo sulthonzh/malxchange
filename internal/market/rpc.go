@@ -18,8 +18,9 @@ type RPC struct {
 
 // RegisterRPC mounts every route on the service's internal mux. The boot
 // harness strips the /internal prefix onto this mux, so these patterns
-// serve at /internal/trades/{market} and /internal/depth/{market}. Market
-// symbols contain a slash ("BTC/USDT"), so the wildcard is greedy.
+// serve at /internal/trades/{market...}, /internal/depth/{market...}, and
+// /internal/kline/{market...}. Market symbols contain a slash ("BTC/USDT"),
+// so the wildcard is greedy.
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /trades/{market...}", r.trades)
 	mux.HandleFunc("GET /depth/{market...}", r.depth)

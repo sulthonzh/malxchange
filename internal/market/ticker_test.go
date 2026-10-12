@@ -160,3 +160,91 @@ func TestTickerWireShape(t *testing.T) {
 		t.Errorf("empty Ticker wire = %s, want %s", b, want)
 	}
 }
+
+// TestTickerPassGate: one publish pass emits a Market only when its Ticker
+// differs from the last one actually published for it — the in-memory
+// cadence state that keeps the loop at most one message per Market per
+// pass (the pass itself is paced at most once per second). The pass output
+// is ordered by Market, so it is deterministic end to end.
+func TestTickerPassGate(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	btc := events.Ticker{Market: "BTC/USDT", Last: "50000.1", High: "50000.1", Low: "50000.1", Turnover: "10.00002"}
+	eth := events.Ticker{Market: "ETH/USDT", Turnover: "0"}
+	btcNext := events.Ticker{Market: "BTC/USDT", Last: "51000", High: "51000", Low: "50000.1", Turnover: "20.00002"}
+
+	// First pass: every known Market publishes, Markets sorted.
+	published := map[string]string{}
+	got := passKeys(tickerPass(now, map[string]events.Ticker{"ETH/USDT": eth, "BTC/USDT": btc}, published))
+	if len(got) != 2 || got[0].Key != "BTC/USDT" || got[1].Key != "ETH/USDT" {
+		t.Fatalf("first pass = [%s %s], want BTC/USDT then ETH/USDT", got[0].Key, got[1].Key)
+	}
+	for _, env := range got {
+		var payload events.Ticker
+		if err := json.Unmarshal(env.Data, &payload); err != nil {
+			t.Fatalf("pass envelope %s: %v", env.Key, err)
+		}
+		switch env.Key {
+		case "BTC/USDT":
+			if payload != btc {
+				t.Errorf("pass payload = %+v, want %+v", payload, btc)
+			}
+		case "ETH/USDT":
+			if payload != eth {
+				t.Errorf("pass payload = %+v, want %+v", payload, eth)
+			}
+		}
+		if env.Type != events.TopicTicker {
+			t.Errorf("pass envelope type = %q, want %q", env.Type, events.TopicTicker)
+		}
+	}
+
+	// Second pass, nothing changed: nothing publishes — the cadence gate.
+	got = passKeys(tickerPass(now.Add(time.Second), map[string]events.Ticker{"BTC/USDT": btc, "ETH/USDT": eth}, published))
+	if len(got) != 0 {
+		t.Errorf("unchanged pass published %d envelopes, want 0", len(got))
+	}
+
+	// BTC moves: only BTC publishes, carrying the new state.
+	emits := tickerPass(now.Add(2*time.Second), map[string]events.Ticker{"BTC/USDT": btcNext, "ETH/USDT": eth}, published)
+	got = passKeys(emits)
+	if len(got) != 1 || got[0].Key != "BTC/USDT" {
+		t.Fatalf("changed pass = %+v, want exactly BTC/USDT", got)
+	}
+	var payload events.Ticker
+	if err := json.Unmarshal(emits[0].env.Data, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if payload != btcNext {
+		t.Errorf("changed pass payload = %+v, want %+v", payload, btcNext)
+	}
+
+	// A market rolling back to an earlier state still publishes: the gate
+	// compares against the last PUBLISHED state, not any history.
+	got = passKeys(tickerPass(now.Add(3*time.Second), map[string]events.Ticker{"BTC/USDT": btc, "ETH/USDT": eth}, published))
+	if len(got) != 1 || got[0].Key != "BTC/USDT" {
+		t.Fatalf("rollback pass = %+v, want exactly BTC/USDT", got)
+	}
+
+	// Envelope ids are deterministic per (Market, second) — a restart or
+	// produce retry within the same second can only re-send a byte-identical
+	// message (SweepTTL's deterministic-id precedent).
+	a := tickerPass(now, map[string]events.Ticker{"BTC/USDT": btc}, map[string]string{})
+	b := tickerPass(now, map[string]events.Ticker{"BTC/USDT": btc}, map[string]string{})
+	if a[0].env.ID != b[0].env.ID {
+		t.Errorf("same-second envelope ids differ: %q vs %q", a[0].env.ID, b[0].env.ID)
+	}
+	if next := tickerPass(now.Add(time.Second), map[string]events.Ticker{"BTC/USDT": btc}, map[string]string{}); next[0].env.ID == a[0].env.ID {
+		t.Errorf("next-second envelope id %q reused", next[0].env.ID)
+	}
+}
+
+// passKeys flattens a pass to its envelope key order (the sorted-Market
+// order the pass promises) so assertions read plainly.
+func passKeys(emits []tickerEmit) []events.Envelope {
+	out := make([]events.Envelope, len(emits))
+	for i, e := range emits {
+		out[i] = e.env
+	}
+	return out
+}

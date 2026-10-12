@@ -11,10 +11,11 @@ import (
 // Run is the market service Extra: the sole writer of the derived schema
 // consumes trade.fill / market.plate through the shared consumer group
 // (per-Market order rides the Market symbol record key) behind the
-// idempotent inbox, and serves the internal market-data REST seams
-// (ADR-0011 — market stays headless). A consumer failure is fatal by
-// design, same contract as the exchange engine: the process exits and
-// Redpanda re-delivers from the committed offset.
+// idempotent inbox, publishes the rolling 24h Ticker onto the ticker
+// topic at the ≤1s cadence (ticket #32), and serves the internal
+// market-data REST seams (ADR-0011 — market stays headless). A consumer
+// failure is fatal by design, same contract as the exchange engine: the
+// process exits and Redpanda re-delivers from the committed offset.
 func Run(ctx context.Context, d service.Deps) error {
 	consumer, err := kafka.NewConsumer(d.Cfg.Kafka, ConsumerGroup, []string{
 		events.TopicTradeFill, events.TopicMarketPlate,
@@ -26,8 +27,9 @@ func Run(ctx context.Context, d service.Deps) error {
 
 	RegisterRPC(d.Internal, &RPC{DB: d.Pool})
 
-	errCh := make(chan error, 1)
+	errCh := make(chan error, 2)
 	go func() { errCh <- ConsumeTopics(ctx, d.Pool, d.Log, consumer) }()
+	go func() { errCh <- PublishTickers(ctx, d.Pool, d.Log, d.Producer) }()
 
 	select {
 	case <-ctx.Done():

@@ -2,10 +2,15 @@ package market
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"log/slog"
+	"sort"
+	"strconv"
 	"time"
 
 	"github.com/shopspring/decimal"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/money"
@@ -138,4 +143,101 @@ func ComputeTicker(ctx context.Context, db DB, market string, now time.Time) (ev
 		return events.Ticker{}, err
 	}
 	return FoldTicker(market, now, fills), nil
+}
+
+// tickerEmit is one decided publish: the envelope and its full wire form,
+// built once by the pass and produced by the loop.
+type tickerEmit struct {
+	env  events.Envelope
+	body []byte
+}
+
+// tickerPass decides what one publish pass emits: a Market publishes only
+// when its Ticker differs from the last one actually published for it —
+// the in-memory cadence state (single-replica stance) that keeps the loop
+// at most one message per Market per pass. Markets are visited in sorted
+// order and each carries its own symbol as record key, so no caller can
+// observe map order. Envelope ids are deterministic per (Market, second)
+// — a restart or produce retry within the same second can only re-send a
+// byte-identical message (the SweepTTL deterministic-id precedent).
+func tickerPass(now time.Time, tickers map[string]events.Ticker, published map[string]string) []tickerEmit {
+	markets := make([]string, 0, len(tickers))
+	for m := range tickers {
+		markets = append(markets, m)
+	}
+	sort.Strings(markets)
+	out := make([]tickerEmit, 0, len(markets))
+	for _, m := range markets {
+		body, err := json.Marshal(tickers[m])
+		if err != nil {
+			// events.Ticker is all strings; marshaling cannot fail.
+			panic(fmt.Sprintf("marshal ticker %s: %v", m, err))
+		}
+		if string(body) == published[m] {
+			continue
+		}
+		id := "ticker:" + m + ":" + strconv.FormatInt(now.Unix(), 10)
+		env, raw, err := events.New(id, m, events.TopicTicker, now, tickers[m])
+		if err != nil {
+			panic(fmt.Sprintf("build ticker envelope %s: %v", m, err))
+		}
+		out = append(out, tickerEmit{env: env, body: raw})
+		published[m] = string(body)
+	}
+	return out
+}
+
+// tickerPublishEvery is the publish cadence: one pass per second, so a
+// Market publishes at most one message per second no matter how fast
+// Fills land (ticket #32).
+const tickerPublishEvery = time.Second
+
+// PublishTickers is the Ticker publish loop: once per cadence, enumerate
+// the known Markets, fold each one's Ticker from its own trade history,
+// and publish what changed onto the ticker topic. A failed pass is logged
+// and retried on the next tick (the SweepTTL precedent for paced loops):
+// a missed sample is harmless because the next pass republishes anything
+// still different from the last published state.
+func PublishTickers(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client) error {
+	t := time.NewTicker(tickerPublishEvery)
+	defer t.Stop()
+	published := make(map[string]string)
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-t.C:
+			if err := publishPass(ctx, db, log, cl, published); err != nil {
+				log.Warn("market: ticker publish pass", "err", err)
+			}
+		}
+	}
+}
+
+// publishPass computes and produces one pass. The gate (tickerPass) picks
+// what to send; this produces each envelope synchronously and records the
+// published state only after the broker acked it, so a failed produce is
+// retried wholesale on the next pass.
+func publishPass(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client, published map[string]string) error {
+	now := time.Now().UTC()
+	markets, err := knownMarkets(ctx, db)
+	if err != nil {
+		return err
+	}
+	tickers := make(map[string]events.Ticker, len(markets))
+	for _, m := range markets {
+		t, err := ComputeTicker(ctx, db, m, now)
+		if err != nil {
+			return err
+		}
+		tickers[m] = t
+	}
+	for _, emit := range tickerPass(now, tickers, published) {
+		if err := cl.ProduceSync(ctx, &kgo.Record{
+			Topic: events.TopicTicker, Key: []byte(emit.env.Key), Value: emit.body,
+		}).FirstErr(); err != nil {
+			return fmt.Errorf("publish ticker %s: %w", emit.env.Key, err)
+		}
+	}
+	return nil
 }

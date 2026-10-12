@@ -2,8 +2,10 @@ package market
 
 import (
 	"cmp"
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"slices"
 	"strconv"
@@ -19,14 +21,30 @@ import (
 // Auth is the compose network boundary: Caddy never proxies /internal.
 type RPC struct {
 	DB Pool
+	// Rebuild wipes the derived state and rewinds the consumer group so
+	// the ordinary loop replays the retained events (ticket #34). Nil
+	// means this process owns no consumer to rewind — the route then
+	// answers 503 rather than pretending a rebuild happened.
+	Rebuild Rebuilder
+}
+
+// Rebuilder is the wipe-and-replay seam behind POST /internal/rebuild
+// (ticket #34): implement it next to the consume loop it rewinds — the
+// projector in rebuild.go.
+type Rebuilder interface {
+	// Rebuild wipes the derived state (trades, last-known Depth, Kline
+	// bars, Market copy, inbox) and rewinds the consumer group to the
+	// earliest offset, all atomically enough that the ordinary consume
+	// loop replays every retained event exactly once.
+	Rebuild(ctx context.Context) error
 }
 
 // RegisterRPC mounts every route on the service's internal mux. The boot
 // harness strips the /internal prefix onto this mux, so these patterns
 // serve at /internal/markets, /internal/trades/{market...},
 // /internal/depth/{market...}, /internal/kline/{market...},
-// /internal/ticker/{market...} and /internal/tickers. Market symbols
-// contain a slash ("BTC/USDT"),
+// /internal/ticker/{market...}, /internal/tickers and the drill trigger
+// POST /internal/rebuild. Market symbols contain a slash ("BTC/USDT"),
 // so the wildcard is greedy.
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /markets", r.markets)
@@ -35,6 +53,7 @@ func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /kline/{market...}", r.klines)
 	mux.HandleFunc("GET /ticker/{market...}", r.ticker)
 	mux.HandleFunc("GET /tickers", r.tickers)
+	mux.HandleFunc("POST /rebuild", r.rebuild)
 }
 
 // MarketSummary is one visible Market of the internal listing (ticket #33):
@@ -369,6 +388,25 @@ func (r *RPC) tickers(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, out)
 }
 
+// rebuild is the drill trigger (ticket #34): wipe the derived state and
+// replay the retained events through the ordinary consume loop. It
+// answers 204 — convergence is observable on the market-data endpoints,
+// and a failure answers 500 so the operator simply retries (the rebuild
+// is idempotent). A process without the projector refuses with 503.
+func (r *RPC) rebuild(w http.ResponseWriter, req *http.Request) {
+	if r.Rebuild == nil {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error": "rebuild unavailable: this process owns no consumer to rewind",
+		})
+		return
+	}
+	if err := r.Rebuild.Rebuild(req.Context()); err != nil {
+		writeErr(w, fmt.Errorf("rebuild: %w", err))
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
 	if errors.Is(err, errBadLimit) || errors.Is(err, errBadInterval) {

@@ -233,11 +233,22 @@ func publishPass(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client,
 		tickers[m] = t
 	}
 	for _, emit := range tickerPass(now, tickers, published) {
-		if err := cl.ProduceSync(ctx, &kgo.Record{
+		// ProduceSync's promise wait does not unblock on a canceled
+		// context, so each produce carries its own deadline: a wedged
+		// broker fails this pass (warned, retried next tick) and the
+		// loop keeps answering ctx.Done within the bound.
+		pctx, cancel := context.WithTimeout(ctx, produceDeadline)
+		err := cl.ProduceSync(pctx, &kgo.Record{
 			Topic: events.TopicTicker, Key: []byte(emit.env.Key), Value: emit.body,
-		}).FirstErr(); err != nil {
+		}).FirstErr()
+		cancel()
+		if err != nil {
 			return fmt.Errorf("publish ticker %s: %w", emit.env.Key, err)
 		}
 	}
 	return nil
 }
+
+// produceDeadline bounds one ProduceSync wait; the pass retries on the
+// next tick, so a timed-out publish only delays that sample.
+const produceDeadline = 10 * time.Second

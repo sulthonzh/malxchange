@@ -149,8 +149,10 @@ func TestTickerWireShape(t *testing.T) {
 		}
 	}
 	// The empty window serializes honestly: empty strings and "0", never
-	// null, never a float zero.
-	b, err = json.Marshal(events.Ticker{Market: "ETH/USDT"})
+	// null, never a float zero. The empty form is produced by the fold —
+	// the only path that builds a Ticker — so this pins the built payload,
+	// not a zero struct.
+	b, err = json.Marshal(FoldTicker("ETH/USDT", time.Now(), nil))
 	if err != nil {
 		t.Fatal(err)
 	}

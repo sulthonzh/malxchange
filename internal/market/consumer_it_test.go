@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -36,6 +37,11 @@ var (
 	itPGHost = os.Getenv("MAL_TEST_PG_HOST")
 	itPGPW   = os.Getenv("MAL_TEST_PG_SUPERUSER_PASSWORD")
 )
+
+// itDBName is unique per test-binary run: sibling worktrees and other
+// packages' runs share the dev Postgres, and a fixed throwaway name lets
+// concurrent runs trample each other's fills.
+var itDBName = "malxchange_itm_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 
 func TestMain(m *testing.M) {
 	if itPGHost == "" || itPGPW == "" {
@@ -70,12 +76,25 @@ func newStack(t *testing.T) *itStack {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS malxchange_itm WITH (FORCE)`)
-	_, _ = admin.Exec(ctx, `CREATE DATABASE malxchange_itm`)
+	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+itDBName+` WITH (FORCE)`)
+	_, _ = admin.Exec(ctx, `CREATE DATABASE `+itDBName)
 	admin.Close()
+	// The throwaway DB dies with the test run: unique names must not
+	// accumulate on the shared dev Postgres.
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
+			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+		if err != nil {
+			return
+		}
+		defer admin.Close()
+		_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+itDBName+` WITH (FORCE)`)
+	})
 
-	mktURL := fmt.Sprintf("postgres://%s:%s@%s:5432/malxchange_itm?sslmode=disable&search_path=market",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost)
+	mktURL := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=market",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, itDBName)
 	pool, err := pgxpool.New(ctx, mktURL)
 	if err != nil {
 		t.Fatal(err)
@@ -89,8 +108,8 @@ func newStack(t *testing.T) *itStack {
 	// Wallet schema: fixture-only, so fills can carry a real funded hold
 	// behind both orders. Market itself never reads it (cross-schema
 	// access is denied by design).
-	walletPool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/malxchange_itm?sslmode=disable&search_path=wallet",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+	walletPool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=wallet",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, itDBName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +151,7 @@ func pgURL(t *testing.T, schema string) string {
 		Scheme:   "postgres",
 		User:     url.UserPassword(os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW),
 		Host:     itPGHost + ":5432",
-		Path:     "/malxchange_itm",
+		Path:     "/" + itDBName,
 		RawQuery: "sslmode=disable&search_path=" + schema,
 	}
 	return u.String()

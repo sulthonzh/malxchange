@@ -8,6 +8,7 @@
 package market
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -665,6 +666,70 @@ func TestDepthEmptyOnlyBeforeFirstPublish(t *testing.T) {
 	s.drain(t)
 	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
 	wantLevels(t, "bids after first publish", levelTuples(t, body, "bids"), [2]string{"49999", "1"})
+}
+
+// TestDepthServesLastKnownPlateAcrossExchangeRestart: the spec #23
+// testing decision — restart the exchange mid-test and assert the front's
+// Depth REST answer keeps coming from market's last-known plate without a
+// gap. In the IT harness the exchange is the library process behind the
+// plate publishes, so its restart is the window in which no plates flow
+// (Warmup: the Book is being rebuilt, ADR-0011) until the restarted
+// engine publishes its rebuilt Book's initial Depth again.
+func TestDepthServesLastKnownPlateAcrossExchangeRestart(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("warmup-restart-1")
+	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+
+	// The exchange is up and publishing; market holds its last plate.
+	s.producePlate(t, "plate-pre-restart", at, events.Plate{
+		Market: "BTC/USDT",
+		Bids:   []events.PlateLevel{{Price: "49999.90", Amount: "1.5"}, {Price: "49999.80", Amount: "2"}},
+		Asks:   []events.PlateLevel{{Price: "50000.10", Amount: "0.7"}, {Price: "50000.20", Amount: "3"}},
+	})
+	s.drain(t)
+	status, lastKnown := s.getREST(t, "/internal/depth/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("pre-restart GET = %d, want 200", status)
+	}
+	wantLevels(t, "pre-restart bids", levelTuples(t, lastKnown, "bids"),
+		[2]string{"49999.90", "1.5"}, [2]string{"49999.80", "2"})
+	wantLevels(t, "pre-restart asks", levelTuples(t, lastKnown, "asks"),
+		[2]string{"50000.10", "0.7"}, [2]string{"50000.20", "3"})
+
+	// The restart window: the exchange process is gone (its plate
+	// publishes stop), Warmup rebuilds the Book, nothing flows. Every
+	// answer through the window must be the SAME last-known plate —
+	// byte for byte, no gap, no empty, no partial book.
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	gaps := 0
+	for time.Now().Before(deadline) {
+		status, body := s.getREST(t, "/internal/depth/BTC/USDT")
+		if status != http.StatusOK || !bytes.Equal(body, lastKnown) {
+			gaps++
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if gaps != 0 {
+		t.Fatalf("depth gapped %d times across the exchange restart window (want the last-known plate every answer)", gaps)
+	}
+
+	// The restarted exchange publishes its rebuilt Book's initial Depth —
+	// a different plate. market adopts it and the window is over.
+	s.producePlate(t, "plate-post-restart", at.Add(10*time.Second), events.Plate{
+		Market: "BTC/USDT",
+		Bids:   []events.PlateLevel{{Price: "49999.95", Amount: "0.9"}},
+		Asks:   []events.PlateLevel{{Price: "50000.15", Amount: "1.1"}},
+	})
+	s.drain(t)
+	status, body := s.getREST(t, "/internal/depth/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("post-restart GET = %d, want 200", status)
+	}
+	wantLevels(t, "post-restart bids", levelTuples(t, body, "bids"), [2]string{"49999.95", "0.9"})
+	wantLevels(t, "post-restart asks", levelTuples(t, body, "asks"), [2]string{"50000.15", "1.1"})
+	if bytes.Equal(body, lastKnown) {
+		t.Error("post-restart depth still serves the pre-restart plate — the fresh publish never landed")
+	}
 }
 
 // TestPoisonEnvelopesParkWithoutWedging: malformed or contract-violating

@@ -300,6 +300,20 @@ func (s *itStack) newConsumerReuseEngine(e *Engine, group string) {
 	s.engine = e
 }
 
+// statusFor picks one Market's snapshot. Status() publishes one snapshot
+// per loaded Market — positional indexing silently grabs whichever
+// Market the map hands over first (#26).
+func statusFor(t *testing.T, e *Engine, market string) StatusSnapshot {
+	t.Helper()
+	for _, st := range e.Status() {
+		if st.Market == market {
+			return st
+		}
+	}
+	t.Fatalf("no status snapshot for market %s", market)
+	return StatusSnapshot{}
+}
+
 func TestRecoveryMatchesIdentically(t *testing.T) {
 	s := newStack(t)
 	s.newConsumer("recover-1")
@@ -311,11 +325,11 @@ func TestRecoveryMatchesIdentically(t *testing.T) {
 	)
 	s.drain(t)
 
-	pre := s.engine.Status()[0]
+	pre := statusFor(t, s.engine, "BTC/USDT")
 
 	// Restart: fresh engine rebuilds from Postgres.
 	s.newEngine()
-	post := s.engine.Status()[0]
+	post := statusFor(t, s.engine, "BTC/USDT")
 	if post.OpenOrders != pre.OpenOrders {
 		t.Errorf("open orders after recovery = %d, want %d", post.OpenOrders, pre.OpenOrders)
 	}

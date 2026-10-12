@@ -2,6 +2,8 @@ package exchange
 
 import (
 	"context"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -147,5 +149,8 @@ func (e *Engine) Status() []StatusSnapshot {
 			Halted: st.Halted, OpenOrders: len(st.OpenLimit) + len(st.OpenMkt), LastSeq: st.Seq,
 		})
 	}
+	// Map iteration order is random; callers index or diff snapshots by
+	// market, so publish a stable market order.
+	slices.SortFunc(out, func(a, b StatusSnapshot) int { return strings.Compare(a.Market, b.Market) })
 	return out
 }

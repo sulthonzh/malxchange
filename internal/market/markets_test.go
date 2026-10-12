@@ -113,12 +113,34 @@ func TestValidateMarketUpdated(t *testing.T) {
 		{"non-decimal maker fee", func(m *events.MarketUpdated) { m.MakerFeeRate = "free" }},
 		{"non-decimal max price", func(m *events.MarketUpdated) { m.MaxPrice = "1e999" }},
 		{"non-decimal min amount", func(m *events.MarketUpdated) { m.MinAmount = "-" }},
+		// "" is legal ONLY on the collar and limit fields — the copy's
+		// tick/lot/fee columns are NOT NULL, so an empty value here would
+		// pass validation and then abort the batch at the INSERT.
+		{"empty tick size", func(m *events.MarketUpdated) { m.TickSize = "" }},
+		{"empty lot size", func(m *events.MarketUpdated) { m.LotSize = "" }},
+		{"empty maker fee", func(m *events.MarketUpdated) { m.MakerFeeRate = "" }},
+		{"empty taker fee", func(m *events.MarketUpdated) { m.TakerFeeRate = "" }},
 	}
 	for _, tc := range cases {
 		m := cfgFixture()
 		tc.mut(&m)
 		if err := validateMarketUpdated(m); err == nil {
 			t.Errorf("%s: accepted", tc.name)
+		}
+	}
+
+	// "" stays legal exactly on the collar and limit fields (unbounded).
+	for name, mut := range map[string]func(*events.MarketUpdated){
+		"min price":    func(m *events.MarketUpdated) { m.MinPrice = "" },
+		"max price":    func(m *events.MarketUpdated) { m.MaxPrice = "" },
+		"min amount":   func(m *events.MarketUpdated) { m.MinAmount = "" },
+		"max amount":   func(m *events.MarketUpdated) { m.MaxAmount = "" },
+		"min turnover": func(m *events.MarketUpdated) { m.MinTurnover = "" },
+	} {
+		m := cfgFixture()
+		mut(&m)
+		if err := validateMarketUpdated(m); err != nil {
+			t.Errorf("%s unbounded: rejected (%v), want legal", name, err)
 		}
 	}
 }

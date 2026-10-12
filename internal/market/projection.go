@@ -135,8 +135,11 @@ func applyEnvelope(ctx context.Context, tx pgx.Tx, d decoded) error {
 
 // validateMarketUpdated checks the market.updated payload contract
 // (ticket #29): a Market with its coins and zone, non-negative scales, and
-// ADR-0005 decimal strings for the money values — "" means unbounded for
-// the collar and limit fields and is legal only there.
+// ADR-0005 decimal strings for the money values. "" means unbounded and
+// is legal ONLY on the collar and limit fields (min/max price, amount,
+// turnover — nullable in the copy); tick/lot/fee values are required,
+// because their columns are NOT NULL — an empty one would pass validation
+// and then abort the batch at the INSERT.
 func validateMarketUpdated(m events.MarketUpdated) error {
 	if m.Market == "" {
 		return fmt.Errorf("market.updated payload: empty market")
@@ -157,6 +160,15 @@ func validateMarketUpdated(m events.MarketUpdated) error {
 	for name, v := range map[string]string{
 		"tickSize": m.TickSize, "lotSize": m.LotSize,
 		"makerFeeRate": m.MakerFeeRate, "takerFeeRate": m.TakerFeeRate,
+	} {
+		if v == "" {
+			return fmt.Errorf("market.updated payload: empty %s (required, not unbounded)", name)
+		}
+		if _, err := money.Parse(v); err != nil {
+			return fmt.Errorf("market.updated payload: %s: %w", name, err)
+		}
+	}
+	for name, v := range map[string]string{
 		"minPrice": m.MinPrice, "maxPrice": m.MaxPrice,
 		"minAmount": m.MinAmount, "maxAmount": m.MaxAmount,
 		"minTurnover": m.MinTurnover,
@@ -260,7 +272,7 @@ func applyMarketUpdated(ctx context.Context, tx pgx.Tx, env events.Envelope, m e
 			ttl_seconds           = EXCLUDED.ttl_seconds,
 			updated_at            = EXCLUDED.updated_at`,
 		m.Market, m.BaseCoin, m.QuoteCoin, m.BaseScale, m.QuoteScale,
-		m.TickSize, m.LotSize, nullableNum(m.MakerFeeRate), nullableNum(m.TakerFeeRate),
+		m.TickSize, m.LotSize, m.MakerFeeRate, m.TakerFeeRate,
 		nullableNum(m.MinPrice), nullableNum(m.MaxPrice),
 		nullableNum(m.MinAmount), nullableNum(m.MaxAmount), nullableNum(m.MinTurnover),
 		m.MarketOrdersEnabled, m.Enabled, m.Visible, m.Sort, m.Zone, m.Featured,

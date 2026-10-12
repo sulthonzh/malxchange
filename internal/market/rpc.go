@@ -1,10 +1,13 @@
 package market
 
 import (
+	"cmp"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -18,11 +21,77 @@ type RPC struct {
 
 // RegisterRPC mounts every route on the service's internal mux. The boot
 // harness strips the /internal prefix onto this mux, so these patterns
-// serve at /internal/trades/{market} and /internal/depth/{market}. Market
-// symbols contain a slash ("BTC/USDT"), so the wildcard is greedy.
+// serve at /internal/markets, /internal/trades/{market} and
+// /internal/depth/{market}. Market symbols contain a slash ("BTC/USDT"),
+// so the wildcard is greedy.
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
+	mux.HandleFunc("GET /markets", r.markets)
 	mux.HandleFunc("GET /trades/{market...}", r.trades)
 	mux.HandleFunc("GET /depth/{market...}", r.depth)
+}
+
+// MarketSummary is one visible Market of the internal listing (ticket #33):
+// the row api proxies for the front's market list (ADR-0011 — api is the
+// only public member surface). Money values are decimal strings (ADR-0005).
+type MarketSummary struct {
+	Market     string `json:"market"`
+	BaseCoin   string `json:"baseCoin"`
+	QuoteCoin  string `json:"quoteCoin"`
+	Zone       string `json:"zone"`
+	Sort       int    `json:"sort"`
+	Featured   bool   `json:"featured"`
+	BaseScale  int    `json:"baseScale"`
+	QuoteScale int    `json:"quoteScale"`
+	TickSize   string `json:"tickSize"` // price quantum, decimal string
+	LotSize    string `json:"lotSize"`  // amount quantum, decimal string
+}
+
+// markets serves the VISIBLE listing (ticket #33): only Markets with
+// visible set, so a Market flipped invisible drops out here while its
+// other endpoints keep answering — nothing else gates on visibility. The
+// empty listing answers [] never null.
+func (r *RPC) markets(w http.ResponseWriter, req *http.Request) {
+	rows, err := r.DB.Query(req.Context(), `
+		SELECT market, base_coin, quote_coin, zone, sort, featured,
+		       base_scale, quote_scale, tick_size::text, lot_size::text
+		FROM markets
+		WHERE visible`)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	defer rows.Close()
+
+	listing := make([]MarketSummary, 0)
+	for rows.Next() {
+		var m MarketSummary
+		if err := rows.Scan(&m.Market, &m.BaseCoin, &m.QuoteCoin, &m.Zone, &m.Sort,
+			&m.Featured, &m.BaseScale, &m.QuoteScale, &m.TickSize, &m.LotSize); err != nil {
+			writeErr(w, err)
+			return
+		}
+		listing = append(listing, m)
+	}
+	if err := rows.Err(); err != nil {
+		writeErr(w, err)
+		return
+	}
+	sortMarkets(listing)
+	writeJSON(w, listing)
+}
+
+// sortMarkets pins the listing's determinism promise at the publish seam:
+// zone (lexicographic), then sort, then the Market as the tie-break —
+// never map or heap order (review checklist: keyed reads, stable publish
+// order).
+func sortMarkets(ms []MarketSummary) {
+	slices.SortFunc(ms, func(a, b MarketSummary) int {
+		return cmp.Or(
+			strings.Compare(a.Zone, b.Zone),
+			cmp.Compare(a.Sort, b.Sort),
+			strings.Compare(a.Market, b.Market),
+		)
+	})
 }
 
 // Trade is the sanitized market-wide record of a Fill (GLOSSARY): the

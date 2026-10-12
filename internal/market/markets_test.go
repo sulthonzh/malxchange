@@ -57,6 +57,40 @@ func TestPayloadOfRoutesMarketUpdated(t *testing.T) {
 	}
 }
 
+// TestMarketListingOrder pins the visible listing's determinism promise:
+// ordered by zone (lexicographic), then sort, then the Market as the
+// tie-break — never map or database order (review checklist: keyed reads,
+// stable publish order).
+func TestMarketListingOrder(t *testing.T) {
+	t.Parallel()
+	got := []MarketSummary{
+		{Market: "ETH/USDT", Zone: "main", Sort: 2},
+		{Market: "SOL/USDT", Zone: "innovation", Sort: 0},
+		{Market: "AAVE/USDT", Zone: "main", Sort: 1},
+		{Market: "BTC/USDT", Zone: "main", Sort: 1},
+		{Market: "DOGE/USDT", Zone: "main", Sort: 1},
+	}
+	want := []string{
+		"SOL/USDT",                           // zone innovation — lexicographically before main
+		"AAVE/USDT", "BTC/USDT", "DOGE/USDT", // zone main, sort 1 — symbol tie-break
+		"ETH/USDT", // zone main, sort 2
+	}
+	sortMarkets(got)
+	for i, m := range got {
+		if m.Market != want[i] {
+			t.Fatalf("position %d = %s, want %s (full order %v)", i, m.Market, want[i], markets(got))
+		}
+	}
+}
+
+func markets(ms []MarketSummary) []string {
+	out := make([]string, 0, len(ms))
+	for _, m := range ms {
+		out = append(out, m.Market)
+	}
+	return out
+}
+
 // TestValidateMarketUpdated: payload-level contract enforcement keeps
 // poisoned messages parked at the consumer, out of the transactions.
 func TestValidateMarketUpdated(t *testing.T) {

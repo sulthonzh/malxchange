@@ -313,8 +313,8 @@ func TestInvisibleMarketDropsFromListingKeepsServing(t *testing.T) {
 		Market: "ETH/USDT", Seq: 1,
 		BuyOrderID: "ord-b", SellOrderID: "ord-a",
 		BuyMemberID: "bob", SellMemberID: "alice",
-		TakerSide:   "buy",
-		Price:       "10.01", Amount: "2", Turnover: "20.02",
+		TakerSide: "buy",
+		Price:     "10.01", Amount: "2", Turnover: "20.02",
 		BuyTurnover: "20.02", BuyFee: "0.000002", SellFee: "0.0200002",
 	})
 	s.producePlate(t, "plate-eth-1", t0, events.Plate{

@@ -23,6 +23,7 @@ type RPC struct {
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /trades/{market...}", r.trades)
 	mux.HandleFunc("GET /depth/{market...}", r.depth)
+	mux.HandleFunc("GET /kline/{market...}", r.klines)
 }
 
 // Trade is the sanitized market-wide record of a Fill (GLOSSARY): the
@@ -158,9 +159,106 @@ func (r *RPC) depth(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, d)
 }
 
+// Kline is one OHLCV bar of a Market at a stored interval (GLOSSARY:
+// Kline). Money values are decimal strings (ADR-0005); OpenTime is the
+// bar's exact UTC bucket open. Bars carry market-wide values only — no
+// Member/Order identifier exists on this wire (ticket #31).
+type Kline struct {
+	Interval  Interval  `json:"interval"`
+	OpenTime  time.Time `json:"openTime"`
+	Open      string    `json:"open"`
+	High      string    `json:"high"`
+	Low       string    `json:"low"`
+	Close     string    `json:"close"`
+	Amount    string    `json:"amount"`
+	Turnover  string    `json:"turnover"`
+	FillCount int64     `json:"fillCount"`
+}
+
+// klineDefaults pins how many bars a plain GET answers with; the accepted
+// range is explicit so clients cannot silently shrink or explode a
+// response (same discipline as the trade list).
+const (
+	defaultKlineLimit = 500
+	maxKlineLimit     = 1000
+)
+
+// klines serves the latest Kline bars of one Market at one stored
+// interval, oldest first — charts draw left to right, and a bar is
+// identified by its bucket open, so unlike trades no reconnect-dedupe head
+// is needed. Every stored interval is served (the legacy 1-minute-only
+// restriction is dead, ticket #31); an absent or unknown interval is an
+// explicit bad request (errBadInterval), never an empty success.
+func (r *RPC) klines(w http.ResponseWriter, req *http.Request) {
+	market := req.PathValue("market")
+	iv, err := klineInterval(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	limit, err := klineLimit(req)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	rows, err := r.DB.Query(req.Context(), `
+		SELECT "interval", bucket_open, open::text, high::text, low::text, close::text,
+		       amount::text, turnover::text, fill_count
+		FROM klines
+		WHERE market = $1 AND "interval" = $2
+		ORDER BY bucket_open DESC
+		LIMIT $3`, market, string(iv), limit)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	defer rows.Close()
+
+	// A Market with no bars yet answers an empty list, never null. Rows
+	// arrive latest first (the index order); reverse to oldest first.
+	klines := make([]Kline, 0)
+	for rows.Next() {
+		var k Kline
+		if err := rows.Scan(&k.Interval, &k.OpenTime, &k.Open, &k.High, &k.Low, &k.Close,
+			&k.Amount, &k.Turnover, &k.FillCount); err != nil {
+			writeErr(w, err)
+			return
+		}
+		klines = append(klines, k)
+	}
+	if err := rows.Err(); err != nil {
+		writeErr(w, err)
+		return
+	}
+	for i, j := 0, len(klines)-1; i < j; i, j = i+1, j-1 {
+		klines[i], klines[j] = klines[j], klines[i]
+	}
+	writeJSON(w, klines)
+}
+
+// klineInterval parses the interval query parameter: it must name a stored
+// interval, and its absence is the same named error as an unknown one.
+func klineInterval(req *http.Request) (Interval, error) {
+	return ParseInterval(req.URL.Query().Get("interval"))
+}
+
+// klineLimit parses the limit query parameter: absent = default, anything
+// outside [1, max] is a bad request.
+func klineLimit(req *http.Request) (int, error) {
+	raw := req.URL.Query().Get("limit")
+	if raw == "" {
+		return defaultKlineLimit, nil
+	}
+	n, err := strconv.Atoi(raw)
+	if err != nil || n < 1 || n > maxKlineLimit {
+		return 0, errBadLimit
+	}
+	return n, nil
+}
+
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError
-	if errors.Is(err, errBadLimit) {
+	if errors.Is(err, errBadLimit) || errors.Is(err, errBadInterval) {
 		status = http.StatusBadRequest
 	}
 	w.WriteHeader(status)

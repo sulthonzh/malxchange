@@ -1,7 +1,12 @@
 package market
 
 import (
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +14,99 @@ import (
 
 	"github.com/syaikhipin/malxchange/internal/money"
 )
+
+// TestKlineLimitParsing: absent limit = the default; the accepted range is
+// explicit, anything else is a bad request.
+func TestKlineLimitParsing(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		raw  string
+		want int
+		bad  bool
+	}{
+		{raw: "", want: defaultKlineLimit},
+		{raw: "1", want: 1},
+		{raw: "1000", want: 1000},
+		{raw: "0", bad: true},
+		{raw: "-5", bad: true},
+		{raw: "1001", bad: true},
+		{raw: "abc", bad: true},
+	}
+	for _, tc := range cases {
+		req := httptest.NewRequest(http.MethodGet, "/kline/BTC/USDT?limit="+url.QueryEscape(tc.raw), nil)
+		got, err := klineLimit(req)
+		if tc.bad {
+			if !errors.Is(err, errBadLimit) {
+				t.Errorf("limit %q: err = %v, want errBadLimit", tc.raw, err)
+			}
+			continue
+		}
+		if err != nil {
+			t.Errorf("limit %q: %v", tc.raw, err)
+		} else if got != tc.want {
+			t.Errorf("limit %q = %d, want %d", tc.raw, got, tc.want)
+		}
+	}
+}
+
+// TestKlineWireStripsIdentifiers pins the Kline wire contract: exactly the
+// OHLCV fields, interval, bucket open, and fill count — no Member/Order
+// identifier field exists to leak (ticket #31, GLOSSARY: Kline).
+func TestKlineWireStripsIdentifiers(t *testing.T) {
+	t.Parallel()
+	k := Kline{
+		Interval:  "5m",
+		OpenTime:  time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC),
+		Open:      "50000.10",
+		High:      "50002.50",
+		Low:       "50000.10",
+		Close:     "50002.50",
+		Amount:    "0.0003",
+		Turnover:  "15.000045",
+		FillCount: 2,
+	}
+	b, err := json.Marshal(k)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"interval", "openTime", "open", "high", "low", "close", "amount", "turnover", "fillCount"}
+	if len(fields) != len(want) {
+		t.Errorf("Kline wire fields = %v, want exactly %v", keys(fields), want)
+	}
+	for _, k := range want {
+		if _, ok := fields[k]; !ok {
+			t.Errorf("Kline wire missing field %q", k)
+		}
+	}
+	for _, banned := range []string{"member", "order"} {
+		if strings.Contains(string(b), banned) {
+			t.Errorf("Kline wire carries %q:\n%s", banned, b)
+		}
+	}
+}
+
+// TestKlineIntervalParamRequired: the interval parameter must name a
+// stored interval; absent or unknown is the named errBadInterval (an
+// explicit 400, never an empty success), so a client cannot silently read
+// a different granularity than it asked for.
+func TestKlineIntervalParamRequired(t *testing.T) {
+	t.Parallel()
+	for _, raw := range []string{"", "2m", "1M"} {
+		req := httptest.NewRequest(http.MethodGet, "/kline/BTC/USDT?interval="+url.QueryEscape(raw), nil)
+		if _, err := klineInterval(req); !errors.Is(err, errBadInterval) {
+			t.Errorf("interval %q: err = %v, want errBadInterval", raw, err)
+		}
+	}
+	req := httptest.NewRequest(http.MethodGet, "/kline/BTC/USDT?interval=15m", nil)
+	got, err := klineInterval(req)
+	if err != nil || got != Interval15m {
+		t.Errorf("interval 15m = %q, %v", got, err)
+	}
+}
 
 // mustUTC builds a UTC wall-clock instant for table tests.
 func mustUTC(s string) time.Time {

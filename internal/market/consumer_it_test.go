@@ -487,6 +487,22 @@ func (s *itStack) producePlate(t *testing.T, id string, at time.Time, p events.P
 	}
 }
 
+// produceRaw produces arbitrary bytes as one record — for poison shapes
+// no events helper can express (a record that is not even an envelope).
+func (s *itStack) produceRaw(t *testing.T, topic, key string, value []byte) {
+	t.Helper()
+	// Bound every test-side produce: kgo's promise wait does not honor
+	// ctx cancellation, so without a deadline a stalled broker parks the
+	// test until the package timeout instead of failing honestly.
+	pctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.producer.ProduceSync(pctx, &kgo.Record{
+		Topic: topic, Key: []byte(key), Value: value,
+	}).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // produceRawPlate produces a market.plate envelope from a hand-built JSON
 // payload — for shapes the events.Plate struct cannot express (a
 // present-but-empty side).
@@ -649,6 +665,86 @@ func TestDepthEmptyOnlyBeforeFirstPublish(t *testing.T) {
 	s.drain(t)
 	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
 	wantLevels(t, "bids after first publish", levelTuples(t, body, "bids"), [2]string{"49999", "1"})
+}
+
+// TestPoisonEnvelopesParkWithoutWedging: malformed or contract-violating
+// envelopes park — retained in the inbox under a park key, logged,
+// non-fatal — instead of the old silent drop+offset-commit (unrequested
+// data loss). A good Fill in the same drain lands and serves, the loop
+// keeps consuming afterwards, and the poison is still inspectable at
+// rest (it did not vanish).
+func TestPoisonEnvelopesParkWithoutWedging(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("poison-1")
+
+	// (a) Raw garbage on trade.fill — not even a decodable envelope.
+	s.produceRaw(t, events.TopicTradeFill, "BTC/USDT", []byte("not an envelope"))
+	// (b) A decodable market.updated whose payload violates the contract:
+	// an empty tick_size, the NOT NULL wedge validateMarketUpdated must
+	// catch at the seam (parked), not the INSERT (fatal).
+	bad := itCfg("BTC/USDT", "main", 1)
+	bad.BaseCoin = "BTC"
+	bad.TickSize = ""
+	s.produceCfg(t, "cfg-poison-1", time.Now().UTC(), bad)
+	// (c) A good funded Fill on the same Market: must land anyway.
+	s.fundAndFreeze(t, "alice", "bob", "BTC", "USDT", "0.0002", "10.00002")
+	s.produceFill(t, "fill-good-1", time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC), events.TradeFill{
+		Market: "BTC/USDT", Seq: 1,
+		BuyOrderID: "ord-t", SellOrderID: "ord-m",
+		BuyMemberID: "bob", SellMemberID: "alice",
+		TakerSide: "buy",
+		Price:     "50000.1", Amount: "0.0002", Turnover: "10.00002",
+		BuyTurnover: "10.00002", BuyFee: "0.0000002", SellFee: "0.01000002",
+	})
+	s.drain(t) // a wedged loop fails the drain
+
+	// The good Fill serves; the poisoned config never listed the Market.
+	status, body := s.getREST(t, "/internal/trades/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("GET /internal/trades/BTC/USDT = %d, want 200\n%s", status, body)
+	}
+	var trades []Trade
+	if err := json.Unmarshal(body, &trades); err != nil {
+		t.Fatalf("trades not a JSON array: %v\n%s", err, body)
+	}
+	if len(trades) != 1 || trades[0].ID != "fill-good-1" {
+		t.Errorf("trades after poison = %+v, want exactly fill-good-1", trades)
+	}
+	if listing := getListing(t, s); len(listing) != 0 {
+		t.Errorf("listing after poisoned config = %+v, want empty", listing)
+	}
+
+	// The poison did not vanish silently: one retained inbox row per
+	// poison event. (Rebuild tripwire — the inbox is the retention
+	// record; no REST surface exposes it.)
+	var parked int
+	if err := s.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM inbox WHERE message_key LIKE 'park:%'`).Scan(&parked); err != nil {
+		t.Fatal(err)
+	}
+	if parked != 2 {
+		t.Errorf("parked inbox rows = %d, want 2 (one per poison event, retained)", parked)
+	}
+
+	// The loop never wedged: a further good Fill still lands and serves.
+	s.fundAndFreeze(t, "alice", "bob", "BTC", "USDT", "0.0003", "15.00003")
+	s.produceFill(t, "fill-good-2", time.Date(2026, 10, 12, 9, 0, 1, 0, time.UTC), events.TradeFill{
+		Market: "BTC/USDT", Seq: 2,
+		BuyOrderID: "ord-t", SellOrderID: "ord-m",
+		BuyMemberID: "bob", SellMemberID: "alice",
+		TakerSide: "buy",
+		Price:     "50000.1", Amount: "0.0003", Turnover: "15.00003",
+		BuyTurnover: "15.00003", BuyFee: "0.0000003", SellFee: "0.01500003",
+	})
+	s.drain(t)
+	_, body = s.getREST(t, "/internal/trades/BTC/USDT")
+	var after []Trade
+	if err := json.Unmarshal(body, &after); err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 2 {
+		t.Errorf("trades after further fill = %d, want 2 (loop still consuming)", len(after))
+	}
 }
 
 func keysOf(m map[string]any) []string {

@@ -17,8 +17,9 @@ import (
 // schema and replaying the topics regenerates it.
 
 // payloadOf decodes and validates one envelope's payload. A payload that
-// cannot be decoded or violates its contract is a parked message (the
-// consumer logs it and commits the offset); it never enters a transaction.
+// cannot be decoded or violates its contract never reaches the derived
+// tables: the consumer parks it in the inbox (retained, logged, deduped
+// on redelivery) instead of dropping it silently.
 func payloadOf(env events.Envelope) (decoded, error) {
 	switch env.Type {
 	case events.TopicTradeFill:

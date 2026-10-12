@@ -148,21 +148,27 @@ func ComputeTicker(ctx context.Context, db DB, market string, now time.Time) (ev
 	return FoldTicker(market, now, fills), nil
 }
 
-// tickerEmit is one decided publish: the envelope and its full wire form,
-// built once by the pass and produced by the loop.
+// tickerEmit is one decided publish: the envelope, its full wire form,
+// and the marshaled Ticker payload the loop records as the published
+// state — but only once the broker acked the produce.
 type tickerEmit struct {
-	env  events.Envelope
-	body []byte
+	env   events.Envelope
+	body  []byte
+	state string
 }
 
 // tickerPass decides what one publish pass emits: a Market publishes only
 // when its Ticker differs from the last one actually published for it —
 // the in-memory cadence state (single-replica stance) that keeps the loop
-// at most one message per Market per pass. Markets are visited in sorted
-// order and each carries the Market as record key, so no caller can
-// observe map order. Envelope ids are deterministic per (Market, second)
-// — a restart or produce retry within the same second can only re-send a
-// byte-identical message (the SweepTTL deterministic-id precedent).
+// at most one message per Market per pass. The pass is a pure gate: it
+// reads published and never writes it — the producing loop records a
+// Market's state only after the broker acked its produce, so a failed
+// produce is re-decided and retried wholesale on the next pass. Markets
+// are visited in sorted order and each carries the Market as record key,
+// so no caller can observe map order. Envelope ids are deterministic per
+// (Market, second) — a restart or produce retry within the same second
+// can only re-send a byte-identical message (the SweepTTL deterministic-id
+// precedent).
 func tickerPass(now time.Time, tickers map[string]events.Ticker, published map[string]string) []tickerEmit {
 	markets := make([]string, 0, len(tickers))
 	for m := range tickers {
@@ -184,8 +190,7 @@ func tickerPass(now time.Time, tickers map[string]events.Ticker, published map[s
 		if err != nil {
 			panic(fmt.Sprintf("build ticker envelope %s: %v", m, err))
 		}
-		out = append(out, tickerEmit{env: env, body: raw})
-		published[m] = string(body)
+		out = append(out, tickerEmit{env: env, body: raw, state: string(body)})
 	}
 	return out
 }
@@ -218,9 +223,9 @@ func PublishTickers(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Clie
 }
 
 // publishPass computes and produces one pass. The gate (tickerPass) picks
-// what to send; this produces each envelope synchronously and records the
-// published state only after the broker acked it, so a failed produce is
-// retried wholesale on the next pass.
+// what to send; produceTickerEmits produces each envelope synchronously
+// and records the published state only after the broker acked it, so a
+// failed produce is retried wholesale on the next pass.
 func publishPass(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client, published map[string]string) error {
 	now := time.Now().UTC()
 	markets, err := knownMarkets(ctx, db)
@@ -235,19 +240,30 @@ func publishPass(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client,
 		}
 		tickers[m] = t
 	}
-	for _, emit := range tickerPass(now, tickers, published) {
-		// ProduceSync's promise wait does not unblock on a canceled
-		// context, so each produce carries its own deadline: a wedged
-		// broker fails this pass (warned, retried next tick) and the
-		// loop keeps answering ctx.Done within the bound.
+	// ProduceSync's promise wait does not unblock on a canceled context,
+	// so each produce carries its own deadline: a wedged broker fails
+	// this pass (warned, retried next tick) and the loop keeps answering
+	// ctx.Done within the bound.
+	produce := func(rec *kgo.Record) error {
 		pctx, cancel := context.WithTimeout(ctx, produceDeadline)
-		err := cl.ProduceSync(pctx, &kgo.Record{
+		defer cancel()
+		return cl.ProduceSync(pctx, rec).FirstErr()
+	}
+	return produceTickerEmits(produce, tickerPass(now, tickers, published), published)
+}
+
+// produceTickerEmits produces each decided publish through produce and
+// records the published state only after produce reported the broker's
+// ack. A produce that fails records nothing and aborts the pass, so the
+// next pass re-decides the same Market and retries wholesale.
+func produceTickerEmits(produce func(*kgo.Record) error, emits []tickerEmit, published map[string]string) error {
+	for _, emit := range emits {
+		if err := produce(&kgo.Record{
 			Topic: events.TopicTicker, Key: []byte(emit.env.Key), Value: emit.body,
-		}).FirstErr()
-		cancel()
-		if err != nil {
+		}); err != nil {
 			return fmt.Errorf("publish ticker %s: %w", emit.env.Key, err)
 		}
+		published[emit.env.Key] = emit.state
 	}
 	return nil
 }

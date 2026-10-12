@@ -2,9 +2,12 @@ package market
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/money"
@@ -164,8 +167,10 @@ func TestTickerWireShape(t *testing.T) {
 // TestTickerPassGate: one publish pass emits a Market only when its Ticker
 // differs from the last one actually published for it — the in-memory
 // cadence state that keeps the loop at most one message per Market per
-// pass (the pass itself is paced at most once per second). The pass output
-// is ordered by Market, so it is deterministic end to end.
+// pass (the pass itself is paced at most once per second). The pass is a
+// pure gate over published; recording is the producer's job, done only
+// after the broker acks (produceTickerEmits). The pass output is ordered
+// by Market, so it is deterministic end to end.
 func TestTickerPassGate(t *testing.T) {
 	t.Parallel()
 	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
@@ -173,9 +178,19 @@ func TestTickerPassGate(t *testing.T) {
 	eth := events.Ticker{Market: "ETH/USDT", Turnover: "0"}
 	btcNext := events.Ticker{Market: "BTC/USDT", Last: "51000", High: "51000", Low: "50000.1", Turnover: "20.00002"}
 
+	// ack records one pass as published, the way the producing loop does
+	// once the broker acks every emit.
+	ack := func(t *testing.T, emits []tickerEmit, published map[string]string) {
+		t.Helper()
+		if err := produceTickerEmits(func(*kgo.Record) error { return nil }, emits, published); err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	// First pass: every known Market publishes, Markets sorted.
 	published := map[string]string{}
-	got := passKeys(tickerPass(now, map[string]events.Ticker{"ETH/USDT": eth, "BTC/USDT": btc}, published))
+	emits := tickerPass(now, map[string]events.Ticker{"ETH/USDT": eth, "BTC/USDT": btc}, published)
+	got := passKeys(emits)
 	if len(got) != 2 || got[0].Key != "BTC/USDT" || got[1].Key != "ETH/USDT" {
 		t.Fatalf("first pass = [%s %s], want BTC/USDT then ETH/USDT", got[0].Key, got[1].Key)
 	}
@@ -198,6 +213,7 @@ func TestTickerPassGate(t *testing.T) {
 			t.Errorf("pass envelope type = %q, want %q", env.Type, events.TopicTicker)
 		}
 	}
+	ack(t, emits, published)
 
 	// Second pass, nothing changed: nothing publishes — the cadence gate.
 	got = passKeys(tickerPass(now.Add(time.Second), map[string]events.Ticker{"BTC/USDT": btc, "ETH/USDT": eth}, published))
@@ -206,7 +222,7 @@ func TestTickerPassGate(t *testing.T) {
 	}
 
 	// BTC moves: only BTC publishes, carrying the new state.
-	emits := tickerPass(now.Add(2*time.Second), map[string]events.Ticker{"BTC/USDT": btcNext, "ETH/USDT": eth}, published)
+	emits = tickerPass(now.Add(2*time.Second), map[string]events.Ticker{"BTC/USDT": btcNext, "ETH/USDT": eth}, published)
 	got = passKeys(emits)
 	if len(got) != 1 || got[0].Key != "BTC/USDT" {
 		t.Fatalf("changed pass = %+v, want exactly BTC/USDT", got)
@@ -218,6 +234,7 @@ func TestTickerPassGate(t *testing.T) {
 	if payload != btcNext {
 		t.Errorf("changed pass payload = %+v, want %+v", payload, btcNext)
 	}
+	ack(t, emits, published)
 
 	// A market rolling back to an earlier state still publishes: the gate
 	// compares against the last PUBLISHED state, not any history.
@@ -236,6 +253,55 @@ func TestTickerPassGate(t *testing.T) {
 	}
 	if next := tickerPass(now.Add(time.Second), map[string]events.Ticker{"BTC/USDT": btc}, map[string]string{}); next[0].env.ID == a[0].env.ID {
 		t.Errorf("next-second envelope id %q reused", next[0].env.ID)
+	}
+}
+
+// TestFailedProduceRetriedNextPass: the published state is recorded only
+// after the broker acked the produce. A failed produce records nothing,
+// so the next pass re-decides the same Market and retries the publish
+// wholesale — the contract publishPass documents. (Regression pin: the
+// pass once recorded at decision time, so a failed produce was never
+// retried until the value itself changed.)
+func TestFailedProduceRetriedNextPass(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	btc := events.Ticker{Market: "BTC/USDT", Last: "50000.1", High: "50000.1", Low: "50000.1", Turnover: "10.00002"}
+	want, err := json.Marshal(btc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tickers := map[string]events.Ticker{"BTC/USDT": btc}
+	published := map[string]string{}
+
+	// The pass decides the publish; the produce fails.
+	emits := tickerPass(now, tickers, published)
+	if len(emits) != 1 {
+		t.Fatalf("first pass emitted %d, want 1", len(emits))
+	}
+	fail := func(*kgo.Record) error { return errors.New("broker down") }
+	if err := produceTickerEmits(fail, emits, published); err == nil {
+		t.Error("failed produce must surface as a pass error")
+	}
+	if len(published) != 0 {
+		t.Fatalf("failed produce recorded published state %v, want nothing recorded", published)
+	}
+
+	// Next pass: nothing changed, yet the publish is retried wholesale —
+	// the gate never learned about the failed produce.
+	retry := tickerPass(now.Add(time.Second), tickers, published)
+	if len(retry) != 1 || retry[0].env.Key != "BTC/USDT" {
+		t.Fatalf("pass after failed produce = %+v, want BTC/USDT retried", passKeys(retry))
+	}
+	if err := produceTickerEmits(func(*kgo.Record) error { return nil }, retry, published); err != nil {
+		t.Fatal(err)
+	}
+	if published["BTC/USDT"] != string(want) {
+		t.Errorf("recorded state = %q, want the marshaled Ticker %q", published["BTC/USDT"], want)
+	}
+
+	// After the ack the cadence gate holds again.
+	if got := tickerPass(now.Add(2*time.Second), tickers, published); len(got) != 0 {
+		t.Errorf("pass after a recorded publish emitted %d, want 0", len(got))
 	}
 }
 

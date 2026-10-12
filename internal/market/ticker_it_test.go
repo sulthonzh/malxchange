@@ -256,8 +256,11 @@ func TestTickerStreamAndRESTMatchUnderLoad(t *testing.T) {
 	}()
 
 	// Sustained Fill load: 40 priced Fills over ~2s, each funded both
-	// sides. Price rises 50000+i, turnover a flat 10 — the expected final
-	// summary is hand-derivable: last/high 50039, low 50000, turnover 400.
+	// sides. Price rises 50000+i, turnover a flat 10. Together with the
+	// three seeded Fills above (50000.1 / 49500.001 / 51500.5, turnover
+	// 66.45052) the final summary is hand-derived: the newest Fill is the
+	// last load Fill (50039), the seeded 51500.5 stays the high, the
+	// seeded 49500.001 the low, turnover 66.45052 + 400 = 466.45052.
 	const load = 40
 	for i := range load {
 		price := fmt.Sprintf("%d", 50000+i)
@@ -334,8 +337,8 @@ func TestTickerStreamAndRESTMatchUnderLoad(t *testing.T) {
 		}
 	}
 	wantBTC := events.Ticker{
-		Market: "BTC/USDT", Last: "50039", High: "50039",
-		Low: "50000", Turnover: "400",
+		Market: "BTC/USDT", Last: "50039", High: "51500.5",
+		Low: "49500.001", Turnover: "466.45052",
 	}
 	if lastBTC != wantBTC {
 		t.Errorf("final stream ticker = %+v, want the hand-derived %+v", lastBTC, wantBTC)

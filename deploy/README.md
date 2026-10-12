@@ -69,7 +69,8 @@ JOIN fails at the database, not in review.
 
 Each service creates the topics it produces at boot (auto-create is off):
 api → `order.command`, `member.register`; exchange → `trade.fill`,
-`order.completed`, `cancel.rejected`, `market.plate`; market → `ticker`.
+`order.completed`, `cancel.rejected`, `market.plate`, `market.updated`;
+market → `ticker`.
 Money values inside event payloads are decimal strings, always.
 
 ## Installer (production, single host)
@@ -89,8 +90,9 @@ SSH, never through Caddy. btcd/ltcd (chains profile, default on) need
 ## Exchange engine (issue #21)
 
 `cmd/exchange` now runs the real fold: order.command in; trade.fill /
-order.completed / cancel.rejected / market.plate out; per-Market Books
-recovered from Postgres at boot with the initial Depth published.
+order.completed / cancel.rejected / market.plate / market.updated out;
+per-Market Books recovered from Postgres at boot with the initial Depth
+published.
 Internal status (admin view lands with #25):
 
     docker run --rm --network malxchange_default curlimages/curl:latest \

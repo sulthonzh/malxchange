@@ -6,11 +6,12 @@ COMPOSE      = docker compose -f deploy/docker-compose.yaml
 COMPOSE_DEV  = $(COMPOSE) -f deploy/compose.override.yaml
 COMPOSE_TEST = $(COMPOSE) -f deploy/compose.test.yaml
 
-.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e test-profile-up test-profile-down test-profile-probe lint build-images installer-check
+.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e test-profile-up test-profile-down test-profile-probe lint build-images installer-check hooks
 
 help:
 	@echo "dev-up            start postgres+redpanda (loopback ports) for local dev"
 	@echo "dev-down          stop dev infra"
+	@echo "hooks             install the shared git hooks (main-checkout commit guard)"
 	@echo "test              unit tests"
 	@echo "test-integration  integration tests against dev infra (boot it first)"
 	@echo "test-chain-e2e    chain E2E against the test profile (boot it first)"
@@ -86,3 +87,26 @@ build-images:
 
 installer-check:
 	bash -n install/install.sh && echo "installer syntax OK"
+
+# Retro (#23 session): agents commit in their own worktrees; the main
+# checkout hosts the shared spec-* integration branches. The pre-commit
+# hook blocks stray commits there (MAL_ALLOW_MAIN_COMMIT=1 overrides;
+# ff-only merges create no commit and pass untouched).
+hooks:
+	@set -e; hook="$$(git rev-parse --git-common-dir)/hooks/pre-commit"; \
+	printf '%s\n' \
+	  '#!/bin/sh' \
+	  '# Installed by `make hooks`. Agents commit in their own worktrees;' \
+	  '# the main checkout hosts the shared spec-* integration branches.' \
+	  '# Stray commits there pollute every sibling worktree that merges the tip.' \
+	  'branch=$$(git branch --show-current)' \
+	  'case "$$branch" in' \
+	  'spec-*)' \
+	  '  if [ "$$(git rev-parse --git-dir)" = "$$(git rev-parse --git-common-dir)" ] && [ -z "$${MAL_ALLOW_MAIN_COMMIT:-}" ]; then' \
+	  '    echo "main checkout on $$branch: commit in a worktree, or set MAL_ALLOW_MAIN_COMMIT=1" >&2' \
+	  '    exit 1' \
+	  '  fi' \
+	  '  ;;' \
+	  'esac' >"$$hook"; \
+	chmod +x "$$hook"; \
+	echo "installed $$hook"

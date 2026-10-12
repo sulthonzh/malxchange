@@ -62,3 +62,28 @@ TestDeterministicFold, TestRestoreRebuildsIdenticalBook,
 TestDepositIndexDeterminism.
 (Symptom: Engine.Status() ordered snapshots by map iteration until #26
 added both the sort and TestStatusStableMarketOrder.)
+
+## IT stacks mint per-binary throwaway DB names
+
+An integration-test stack that DROPs/CREATEs a fixed database name
+serializes every test binary on the machine against a shared dev
+Postgres: two concurrent runs — two agent worktrees, or a local run
+beside CI — invalidate each other's connections, and the failure looks
+like a code bug (dropped relations mid-run, 3D000/57P01). Mint a
+`malxchange_it_<suffix>` name per test binary and FORCE-drop it in
+`t.Cleanup`, the way the market harness does.
+(Symptom: every "exchange IT flake" of the #23 session — a different
+test trio per attempt, all collision artifacts; a pristine baseline
+failed the same way under sibling load.)
+
+## ITs assert through the served surface
+
+An integration test that SELECTs from a derived table pins the
+projection's internal shape: a schema-improving refactor then fails
+tests members never depended on, while wire-contract regressions slip
+past unasserted. Assert through the endpoint the api proxy would call;
+keep a direct table read only where no surface exists (rebuild
+tripwires like `trades == fills`), with a one-line comment saying so.
+(Symptom: five of six market-slice tickets shipped table-reading ITs
+against the spec's "observable through endpoints" testing decision;
+caught only at slice-end review.)

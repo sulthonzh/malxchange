@@ -115,7 +115,7 @@ func newStack(t *testing.T) *itStack {
 		t.Fatal(err)
 	}
 	t.Cleanup(producer.Close)
-	for _, topic := range []string{events.TopicTradeFill, events.TopicMarketPlate} {
+	for _, topic := range []string{events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated} {
 		if err := broker.CreateTopic(topic, 1, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -153,8 +153,9 @@ func (s *itStack) startREST() {
 
 func (s *itStack) newConsumer(group string) {
 	s.t.Helper()
-	c, err := kafka.NewConsumer(s.cfg, group, []string{events.TopicTradeFill, events.TopicMarketPlate},
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
+	c, err := kafka.NewConsumer(s.cfg, group, []string{
+		events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated,
+	}, kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
 	if err != nil {
 		s.t.Fatal(err)
 	}

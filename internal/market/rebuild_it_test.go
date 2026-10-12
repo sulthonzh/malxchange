@@ -44,6 +44,7 @@ func drillCfg(market, zone string, sort int, visible bool) events.MarketUpdated 
 	}
 	return c
 }
+
 // produceDrillSoup produces the deterministic event sequence every drill
 // derives from and returns the exact counts the rebuild must reproduce:
 // the Fills (trades may neither dupe nor lose one) and the total envelopes

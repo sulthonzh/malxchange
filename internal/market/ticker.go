@@ -156,7 +156,7 @@ type tickerEmit struct {
 // when its Ticker differs from the last one actually published for it —
 // the in-memory cadence state (single-replica stance) that keeps the loop
 // at most one message per Market per pass. Markets are visited in sorted
-// order and each carries its own symbol as record key, so no caller can
+// order and each carries the Market as record key, so no caller can
 // observe map order. Envelope ids are deterministic per (Market, second)
 // — a restart or produce retry within the same second can only re-send a
 // byte-identical message (the SweepTTL deterministic-id precedent).

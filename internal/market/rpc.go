@@ -178,9 +178,9 @@ func (r *RPC) ticker(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, t)
 }
 
-// tickers serves the all-markets map keyed by Market symbol — every known
-// Market (trade history or last-known Depth), each value identical to the
-// single-Market endpoint. Keyed by symbol, never positional.
+// tickers serves the all-markets map keyed by Market — every known Market
+// (trade history or last-known Depth), each value identical to the
+// single-Market endpoint. Keyed reads, never positional.
 func (r *RPC) tickers(w http.ResponseWriter, req *http.Request) {
 	markets, err := knownMarkets(req.Context(), r.DB)
 	if err != nil {

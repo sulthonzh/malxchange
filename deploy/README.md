@@ -97,3 +97,15 @@ Internal status (admin view lands with #25):
 
     docker run --rm --network malxchange_default curlimages/curl:latest \
         -s http://exchange:8080/internal/engine/status
+
+## Market data projection (issues #29–#32)
+
+`cmd/market` consumes `trade.fill` / `market.plate` into the derived
+market schema: sanitized trades, last-known Depth, and the rolling 24h
+Ticker published on the `ticker` topic at most once per Market per
+second (zero-Fill Markets included, honestly empty). Internal REST
+answers the same values api will proxy — `GET /internal/trades/{market}`,
+`GET /internal/depth/{market}`, `GET /internal/ticker/{market}`, and the
+all-markets map `GET /internal/tickers`. Market config arrives on
+`market.updated` (ticket #33) and everything in the schema is rebuildable
+by replay (ticket #34).

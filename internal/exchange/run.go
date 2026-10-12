@@ -37,7 +37,7 @@ func Run(ctx context.Context, d service.Deps) error {
 	errCh := make(chan error, 3)
 	go func() { errCh <- ConsumeCommandTopic(ctx, eng, consumer) }()
 	go func() { errCh <- SweepTTL(ctx, eng, d.Producer) }()
-	go func() { errCh <- WatchConfig(ctx, eng) }()
+	go func() { errCh <- WatchConfig(ctx, eng, 5*time.Second) }()
 
 	select {
 	case <-ctx.Done():

@@ -60,6 +60,30 @@ func (m MarketCfg) quant() quantization {
 	return quantization{m.TickRaw, m.LotRaw, m.BaseScale, m.QuoteScale}
 }
 
+// changed reports whether any config field differs from n, comparing the
+// optional caps by value. Derived fields (TickRaw/LotRaw) follow from the
+// decimal strings, and Postgres normalizes equal NUMERICs to equal text,
+// so string equality is exact.
+func (m MarketCfg) changed(n MarketCfg) bool {
+	return m.BaseCoin != n.BaseCoin || m.QuoteCoin != n.QuoteCoin ||
+		m.BaseScale != n.BaseScale || m.QuoteScale != n.QuoteScale ||
+		m.TickSize != n.TickSize || m.LotSize != n.LotSize ||
+		m.MakerFee != n.MakerFee || m.TakerFee != n.TakerFee ||
+		m.MinPrice != n.MinPrice || m.MaxPrice != n.MaxPrice ||
+		m.MinAmount != n.MinAmount || m.MaxAmount != n.MaxAmount ||
+		m.MinTurnover != n.MinTurnover ||
+		m.MarketOrders != n.MarketOrders || m.Enabled != n.Enabled || m.Visible != n.Visible ||
+		m.Sort != n.Sort || m.Zone != n.Zone || m.Featured != n.Featured ||
+		!int32Eq(m.MaxOpen, n.MaxOpen) || !int32Eq(m.TTLSeconds, n.TTLSeconds)
+}
+
+func int32Eq(a, b *int32) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return *a == *b
+}
+
 // LoadMarkets reads all market configs.
 func LoadMarkets(ctx context.Context, pool *pgxpool.Pool) (map[string]MarketCfg, error) {
 	rows, err := pool.Query(ctx, `

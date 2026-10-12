@@ -2,10 +2,12 @@ package exchange
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/syaikhipin/malxchange/internal/engine"
@@ -66,9 +68,11 @@ func SweepTTL(ctx context.Context, e *Engine, cl *kgo.Client) error {
 // at fill/validation time straight from the cfg map; tick/lot/scale
 // changes are REFUSED while orders rest (the freeze guard — admin edits
 // land with #25, this is the engine-side backstop). New markets get a
-// fresh book.
-func WatchConfig(ctx context.Context, e *Engine) error {
-	t := time.NewTicker(5 * time.Second)
+// fresh book. Every accepted change is published as market.updated
+// (ticket #29); a failed publish leaves memory untouched and the next
+// tick retries.
+func WatchConfig(ctx context.Context, e *Engine, every time.Duration) error {
+	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
 		select {
@@ -80,31 +84,76 @@ func WatchConfig(ctx context.Context, e *Engine) error {
 				e.Log.Warn("config reload", "err", err)
 				continue
 			}
-			e.applyConfig(cfgs)
+			if err := e.applyConfig(ctx, cfgs); err != nil {
+				e.Log.Warn("config apply", "err", err) // retried next tick
+			}
 		}
 	}
 }
 
-func (e *Engine) applyConfig(cfgs map[string]MarketCfg) {
+// applyConfig diffs the reloaded configs against the live ones and
+// applies accepted changes: unknown Markets get a fresh book, quantization
+// moves are refused while orders rest, halt/resume follows enabled, and
+// every accepted change is published as one market.updated through the
+// outbox (ticket #29). The events are inserted BEFORE the in-memory
+// switch, inside the same lock hold, so the durable event exists exactly
+// when the change applies; a failed insert applies nothing and the next
+// watch tick retries.
+func (e *Engine) applyConfig(ctx context.Context, cfgs map[string]MarketCfg) error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	for symbol, cfg := range cfgs {
+	// Pass 1: decide which changes are accepted, in stable Market order
+	// (map iteration is random; publish order must be deterministic).
+	symbols := make([]string, 0, len(cfgs))
+	for symbol := range cfgs {
+		symbols = append(symbols, symbol)
+	}
+	slices.Sort(symbols)
+
+	var accepted []MarketCfg
+	for _, symbol := range symbols {
+		cfg := cfgs[symbol]
 		old, known := e.cfgs[symbol]
-		book := e.books[symbol]
-		if !known || book == nil {
+		if !known || e.books[symbol] == nil {
+			accepted = append(accepted, cfg) // new Market: full row surfaces
+			continue
+		}
+		if old.quant() != cfg.quant() && e.openCountLocked(symbol) > 0 {
+			e.Log.Error("market config edit REFUSED: quantization change with resting orders",
+				"market", symbol, "open", e.openCountLocked(symbol),
+				"old", old.quant(), "new", cfg.quant())
+			continue // keep the old, working spec; publish nothing
+		}
+		if old.changed(cfg) {
+			accepted = append(accepted, cfg)
+		}
+	}
+	if len(accepted) == 0 {
+		return nil
+	}
+
+	if err := pgx.BeginFunc(ctx, e.Pool, func(tx pgx.Tx) error {
+		for _, cfg := range accepted {
+			if err := enqueueMarketUpdated(ctx, tx, e.OB, cfg); err != nil {
+				return fmt.Errorf("publish market.updated for %s: %w", cfg.Symbol, err)
+			}
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
+
+	// Pass 2: apply what was published.
+	for _, cfg := range accepted {
+		symbol := cfg.Symbol
+		old, known := e.cfgs[symbol]
+		if !known || e.books[symbol] == nil {
 			e.books[symbol] = engine.NewBook(cfg.Spec())
 			e.cfgs[symbol] = cfg
 			e.ready[symbol] = true
 			e.Log.Info("market loaded", "market", symbol, "enabled", cfg.Enabled)
 			continue
-		}
-		// Freeze guard: quantization may not change while orders rest.
-		if old.quant() != cfg.quant() && e.openCountLocked(symbol) > 0 {
-			e.Log.Error("market config edit REFUSED: quantization change with resting orders",
-				"market", symbol, "open", e.openCountLocked(symbol),
-				"old", old.quant(), "new", cfg.quant())
-			continue // keep the old, working spec
 		}
 		if old.quant() != cfg.quant() {
 			// allowed with an empty book: swap in a fresh book at the new spec
@@ -120,6 +169,7 @@ func (e *Engine) applyConfig(cfgs map[string]MarketCfg) {
 		}
 		e.cfgs[symbol] = cfg
 	}
+	return nil
 }
 
 func (e *Engine) openCountLocked(symbol string) int {

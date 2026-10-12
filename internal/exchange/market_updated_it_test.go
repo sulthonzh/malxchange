@@ -31,15 +31,23 @@ func startRelay(t *testing.T, s *itStack) context.CancelFunc {
 	return cancel
 }
 
+// createExchangeTopics mirrors the boot contract (no auto-create): every
+// topic exchange owns must exist before the relay produces to it.
+func createExchangeTopics(t *testing.T, s *itStack) {
+	t.Helper()
+	for _, td := range events.OwnedTopics("exchange") {
+		if err := s.broker.CreateTopic(td.Topic, td.Partitions, nil); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // updatedFeed reads market.updated with its own consumer group, from the
 // first offset, committing every accepted envelope.
 type updatedFeed struct{ cl *kgo.Client }
 
 func startUpdatedFeed(t *testing.T, s *itStack, group string) *updatedFeed {
 	t.Helper()
-	if err := s.broker.CreateTopic(events.TopicMarketUpdated, 1, nil); err != nil {
-		t.Fatal(err)
-	}
 	cl, err := kafka.NewConsumer(s.cfg, group, []string{events.TopicMarketUpdated},
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
 	if err != nil {
@@ -150,6 +158,7 @@ func wantSeedMarket(market, base, tick, lot string, sort int, featured bool) eve
 // config row as decimal strings, keyed by Market symbol (acceptance 1).
 func TestBootPublishesMarketUpdatedPerMarket(t *testing.T) {
 	s := newStack(t)
+	createExchangeTopics(t, s)
 	startRelay(t, s)
 
 	f := startUpdatedFeed(t, s, "boot-burst-it")
@@ -187,4 +196,96 @@ func keysOf(m map[string]events.Envelope) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// startConfigWatch runs the real WatchConfig loop at a test interval.
+func startConfigWatch(t *testing.T, s *itStack, every time.Duration) context.CancelFunc {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = WatchConfig(ctx, s.engine, every) }()
+	t.Cleanup(cancel)
+	return cancel
+}
+
+// TestConfigEditPublishesAndRefusalStaysSilent: an accepted operator edit
+// surfaces a new event within the config-watch interval, keyed by Market
+// symbol (acceptance 2); an edit the engine refuses (freeze guard:
+// quantization change with resting orders) publishes nothing — consumers
+// must never see a row the engine rejected.
+func TestConfigEditPublishesAndRefusalStaysSilent(t *testing.T) {
+	s := newStack(t)
+	createExchangeTopics(t, s)
+	startRelay(t, s)
+	startConfigWatch(t, s, 50*time.Millisecond)
+
+	f := startUpdatedFeed(t, s, "config-watch-it")
+	if got := f.await(t, 2, 30*time.Second); len(got) != 2 {
+		t.Fatalf("boot burst: got %d events, want 2", len(got))
+	}
+
+	// Resting order on BTC/USDT arms the freeze guard (no fill happens,
+	// so no funding fixture is involved).
+	s.newConsumer("config-watch-orders")
+	s.produce(placeCmd("rest-1", "alice", "sell", "limit", "50000.10", "0.0005"))
+	s.drain(t)
+
+	// Refused edit: BTC tick/lot scale move with an order resting.
+	_, err := s.pool.Exec(context.Background(),
+		`UPDATE markets SET tick_size = 0.20 WHERE symbol = 'BTC/USDT'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.awaitNone(t, time.Second)
+
+	// Accepted edit: ETH fee rate and visibility.
+	_, err = s.pool.Exec(context.Background(),
+		`UPDATE markets SET maker_fee_rate = 0.002, visible = FALSE WHERE symbol = 'ETH/USDT'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	envs := f.await(t, 1, 10*time.Second)
+	if envs[0].Key != "ETH/USDT" {
+		t.Fatalf("event key = %q, want ETH/USDT (refused BTC edit must stay silent)", envs[0].Key)
+	}
+	got := decodeUpdated(t, envs[0])
+	want := wantSeedMarket("ETH/USDT", "ETH", "0.01", "0.001", 2, false)
+	want.MakerFeeRate = "0.002"
+	want.Visible = false
+	if got != want {
+		t.Errorf("edited payload:\n got %+v\nwant %+v", got, want)
+	}
+
+	// The refused BTC edit must not surface later either.
+	f.awaitNone(t, time.Second)
+}
+
+// TestNewMarketSurfacesOnWatch: a Market inserted by an operator is a
+// config change — the watch loop publishes its full row and the engine
+// gets a fresh Book.
+func TestNewMarketSurfacesOnWatch(t *testing.T) {
+	s := newStack(t)
+	createExchangeTopics(t, s)
+	startRelay(t, s)
+	startConfigWatch(t, s, 50*time.Millisecond)
+
+	f := startUpdatedFeed(t, s, "new-market-it")
+	if got := f.await(t, 2, 30*time.Second); len(got) != 2 {
+		t.Fatalf("boot burst: got %d events, want 2", len(got))
+	}
+
+	_, err := s.pool.Exec(context.Background(), `
+		INSERT INTO markets (symbol, base_coin, quote_coin, base_scale, quote_scale,
+		                     tick_size, lot_size, min_turnover, sort)
+		VALUES ('SOL/USDT', 'SOL', 'USDT', 8, 2, 0.01, 0.001, 5, 3)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	envs := f.await(t, 1, 10*time.Second)
+	if envs[0].Key != "SOL/USDT" {
+		t.Fatalf("event key = %q, want SOL/USDT", envs[0].Key)
+	}
+	if got := decodeUpdated(t, envs[0]); got != wantSeedMarket("SOL/USDT", "SOL", "0.01", "0.001", 3, false) {
+		t.Errorf("new-market payload:\n got %+v", got)
+	}
 }

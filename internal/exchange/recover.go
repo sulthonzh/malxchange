@@ -39,13 +39,19 @@ func (e *Engine) Recover(ctx context.Context) error {
 		e.cfgs[symbol] = cfg
 		e.ready[symbol] = true
 
-		// Initial Depth publish (ADR-0010/0011): market's last-known plate
-		// refreshes from this; a true cold start publishes an empty book.
+		// Initial publishes (ADR-0010/0011, ticket #29): market's
+		// last-known plate refreshes from the Depth publish (a true cold
+		// start publishes an empty book), and one market.updated per
+		// known Market lands right after its Book recovery — the lawful
+		// source for market's Market copy and api's listings.
 		st := book.State()
 		if err := pgx.BeginFunc(ctx, e.Pool, func(tx pgx.Tx) error {
-			return enqueuePlate(ctx, tx, e.OB, cfg, st.PlateBuy, st.PlateSell)
+			if err := enqueuePlate(ctx, tx, e.OB, cfg, st.PlateBuy, st.PlateSell); err != nil {
+				return err
+			}
+			return enqueueMarketUpdated(ctx, tx, e.OB, cfg)
 		}); err != nil {
-			return fmt.Errorf("recover %s: initial plate: %w", symbol, err)
+			return fmt.Errorf("recover %s: initial publish: %w", symbol, err)
 		}
 	}
 	return nil

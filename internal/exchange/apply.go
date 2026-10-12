@@ -194,6 +194,32 @@ func plateLevels(spec engine.MarketSpec, p engine.Plate) []events.PlateLevel {
 	return out
 }
 
+// enqueueMarketUpdated publishes the full Market row on market.updated
+// (ticket #29): the lawful source for market's Market copy and api's
+// listings, so no consumer needs a cross-schema read. Keyed by Market
+// symbol for per-Market ordering, like trade.fill.
+func enqueueMarketUpdated(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCfg) error {
+	data := events.MarketUpdated{
+		Market: cfg.Symbol, BaseCoin: cfg.BaseCoin, QuoteCoin: cfg.QuoteCoin,
+		BaseScale: cfg.BaseScale, QuoteScale: cfg.QuoteScale,
+		TickSize: cfg.TickSize, LotSize: cfg.LotSize,
+		MakerFeeRate: cfg.MakerFee, TakerFeeRate: cfg.TakerFee,
+		MinPrice: cfg.MinPrice, MaxPrice: cfg.MaxPrice,
+		MinAmount: cfg.MinAmount, MaxAmount: cfg.MaxAmount,
+		MinTurnover:         cfg.MinTurnover,
+		MarketOrdersEnabled: cfg.MarketOrders,
+		Enabled:             cfg.Enabled,
+		Visible:             cfg.Visible,
+		Sort:                cfg.Sort, Zone: cfg.Zone, Featured: cfg.Featured,
+		MaxOpenOrders: cfg.MaxOpen, TTLSeconds: cfg.TTLSeconds,
+	}
+	_, body, err := events.New(uuid.NewString(), cfg.Symbol, events.TopicMarketUpdated, time.Now().UTC(), data)
+	if err != nil {
+		return err
+	}
+	return ob.Enqueue(ctx, tx, events.TopicMarketUpdated, cfg.Symbol, body)
+}
+
 // enqueueRejected publishes a placement rejection or unknown-cancel
 // answer on cancel.rejected (the api service answers the Member from it).
 func enqueueRejected(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, r events.CancelRejected) error {

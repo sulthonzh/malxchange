@@ -35,6 +35,9 @@ type MarketCfg struct {
 	MarketOrders bool
 	Enabled      bool
 	Visible      bool
+	Sort         int
+	Zone         string
+	Featured     bool
 	TTLSeconds   *int32
 	MaxOpen      *int32
 }
@@ -76,13 +79,10 @@ func LoadMarkets(ctx context.Context, pool *pgxpool.Pool) (map[string]MarketCfg,
 	out := map[string]MarketCfg{}
 	for rows.Next() {
 		var m MarketCfg
-		var sort int
-		var zone string
-		var featured bool
 		if err := rows.Scan(&m.Symbol, &m.BaseCoin, &m.QuoteCoin, &m.BaseScale, &m.QuoteScale,
 			&m.TickSize, &m.LotSize, &m.MakerFee, &m.TakerFee,
 			&m.MinPrice, &m.MaxPrice, &m.MinAmount, &m.MaxAmount, &m.MinTurnover,
-			&m.MarketOrders, &m.Enabled, &m.Visible, &sort, &zone, &featured,
+			&m.MarketOrders, &m.Enabled, &m.Visible, &m.Sort, &m.Zone, &m.Featured,
 			&m.MaxOpen, &m.TTLSeconds); err != nil {
 			return nil, fmt.Errorf("exchange: scan market: %w", err)
 		}

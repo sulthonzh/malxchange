@@ -15,6 +15,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
@@ -242,18 +243,24 @@ func TestTickerStreamAndRESTMatchUnderLoad(t *testing.T) {
 	})
 	s.drain(t)
 
-	// The real publish loop.
+	// The real publish loop. stopLoop is run-once: the loop goroutine
+	// sends exactly one result, so exactly one receive may drain it —
+	// whether we stop explicitly below or via the defer on early exit.
 	loopCtx, cancel := context.WithCancel(context.Background())
 	loopDone := make(chan error, 1)
 	go func() {
 		loopDone <- PublishTickers(loopCtx, s.pool, slog.New(slog.NewTextHandler(io.Discard, nil)), s.producer)
 	}()
-	defer func() {
-		cancel()
-		if err := <-loopDone; err != nil {
-			t.Errorf("publish loop: %v", err)
-		}
-	}()
+	var stopOnce sync.Once
+	stopLoop := func() {
+		stopOnce.Do(func() {
+			cancel()
+			if err := <-loopDone; err != nil {
+				t.Errorf("publish loop: %v", err)
+			}
+		})
+	}
+	defer stopLoop()
 
 	// Sustained Fill load: 40 priced Fills over ~2s, each funded both
 	// sides. Price rises 50000+i, turnover a flat 10. Together with the
@@ -279,10 +286,7 @@ func TestTickerStreamAndRESTMatchUnderLoad(t *testing.T) {
 	// Let one pass fold the final state before the loop stops, so the
 	// last published value is the current one (≤1s cadence).
 	time.Sleep(1500 * time.Millisecond)
-	cancel()
-	if err := <-loopDone; err != nil {
-		t.Fatalf("publish loop: %v", err)
-	}
+	stopLoop()
 
 	envs := feed.collect(t, 2*time.Second)
 	if len(envs) == 0 {

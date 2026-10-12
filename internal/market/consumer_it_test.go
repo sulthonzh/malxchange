@@ -279,7 +279,12 @@ func (s *itStack) produceFill(t *testing.T, id string, at time.Time, f events.Tr
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.producer.ProduceSync(context.Background(), &kgo.Record{
+	// Bound every test-side produce: kgo's promise wait does not honor
+	// ctx cancellation, so without a deadline a stalled broker parks the
+	// test until the package timeout instead of failing honestly.
+	pctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.producer.ProduceSync(pctx, &kgo.Record{
 		Topic: events.TopicTradeFill, Key: []byte(f.Market), Value: body,
 	}).FirstErr(); err != nil {
 		t.Fatal(err)
@@ -289,7 +294,8 @@ func (s *itStack) produceFill(t *testing.T, id string, at time.Time, f events.Tr
 // getREST performs one internal REST GET and decodes the response body.
 func (s *itStack) getREST(t *testing.T, path string) (int, []byte) {
 	t.Helper()
-	resp, err := http.Get(s.rest.URL + path)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(s.rest.URL + path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +458,12 @@ func (s *itStack) producePlate(t *testing.T, id string, at time.Time, p events.P
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.producer.ProduceSync(context.Background(), &kgo.Record{
+	// Bound every test-side produce: kgo's promise wait does not honor
+	// ctx cancellation, so without a deadline a stalled broker parks the
+	// test until the package timeout instead of failing honestly.
+	pctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.producer.ProduceSync(pctx, &kgo.Record{
 		Topic: events.TopicMarketPlate, Key: []byte(p.Market), Value: body,
 	}).FirstErr(); err != nil {
 		t.Fatal(err)
@@ -472,7 +483,12 @@ func (s *itStack) produceRawPlate(t *testing.T, id string, at time.Time, payload
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := s.producer.ProduceSync(context.Background(), &kgo.Record{
+	// Bound every test-side produce: kgo's promise wait does not honor
+	// ctx cancellation, so without a deadline a stalled broker parks the
+	// test until the package timeout instead of failing honestly.
+	pctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := s.producer.ProduceSync(pctx, &kgo.Record{
 		Topic: events.TopicMarketPlate, Key: []byte(env.Key), Value: body,
 	}).FirstErr(); err != nil {
 		t.Fatal(err)

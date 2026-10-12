@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -25,22 +26,32 @@ var Topics = []string{events.TopicTradeFill, events.TopicMarketPlate, events.Top
 type Projector struct {
 	db  Pool
 	log *slog.Logger
-	cl  *kgo.Client
+	cl  consumerClient
 
-	// mu serializes Rebuild's rewind+wipe against the loop's apply+commit
-	// batches — the franz-go SetOffsets guidance is to never run it
-	// concurrent with committing, and the wipe must not interleave with a
-	// half-applied batch. Polling itself stays outside the lock (an idle
-	// poll blocks until records arrive; holding the lock there would
-	// starve the endpoint), and a batch buffered during a rebuild applies
-	// afterwards against the wiped state, converging per the comments in
-	// Rebuild.
+	// mu serializes the whole consume cycle (poll → apply → commit)
+	// against Rebuild's rewind+wipe. The franz-go SetOffsets guidance is
+	// to never run it concurrent with polling or committing, and a batch
+	// polled before a rewind but committed after it would re-commit head
+	// offsets over the wiped tables — a crash mid-replay then resumes at
+	// the head and permanently skips the replay. Polling runs inside the
+	// lock on a short deadline (pollWait), so an idle loop cannot starve
+	// the rebuild endpoint.
 	mu sync.Mutex
+}
+
+// consumerClient is the franz-go surface the projector drives; *kgo.Client
+// satisfies it. The seam exists so the poll/rewind/commit ordering
+// contract is pinnable with a scripted client (rebuild_test.go).
+type consumerClient interface {
+	PollRecords(ctx context.Context, maxPollRecords int) kgo.Fetches
+	SetOffsets(offsets map[string]map[int32]kgo.EpochOffset)
+	MarkCommitRecords(recs ...*kgo.Record)
+	CommitMarkedOffsets(ctx context.Context) error
 }
 
 // NewProjector wires one projector around the consumer the run harness
 // started; the same client must be the one Consume polls.
-func NewProjector(db Pool, log *slog.Logger, cl *kgo.Client) *Projector {
+func NewProjector(db Pool, log *slog.Logger, cl consumerClient) *Projector {
 	return &Projector{db: db, log: log, cl: cl}
 }
 
@@ -50,13 +61,25 @@ func NewProjector(db Pool, log *slog.Logger, cl *kgo.Client) *Projector {
 // single-partition topics. Any apply error is fatal by design (same
 // contract as the exchange engine and the wallet): the process restarts
 // and Redpanda re-delivers from the committed offset.
+//
+// The WHOLE cycle runs under p.mu, shared with Rebuild's rewind+wipe:
+// a poll can never be in flight while the group is rewound, and a batch
+// polled before a rewind always commits before it — otherwise that batch
+// would re-commit head offsets over the wiped tables and a crash mid-
+// replay would permanently skip the replay. pollWait bounds the idle
+// poll so a quiet loop releases the mutex and the rebuild endpoint
+// stays responsive (the single-replica stance permits the full
+// serialization; one replica owns this projector).
 func (p *Projector) Consume(ctx context.Context) error {
 	for {
-		fetches := p.cl.PollRecords(ctx, 500)
+		p.mu.Lock()
+		pollCtx, cancel := context.WithTimeout(ctx, pollWait)
+		fetches := p.cl.PollRecords(pollCtx, 500)
+		cancel()
 		if fetches.IsClientClosed() || ctx.Err() != nil {
+			p.mu.Unlock()
 			return nil
 		}
-		p.mu.Lock()
 		err := applyFetches(ctx, p.db, p.log, p.cl, fetches)
 		p.mu.Unlock()
 		if err != nil {
@@ -64,6 +87,13 @@ func (p *Projector) Consume(ctx context.Context) error {
 		}
 	}
 }
+
+// pollWait bounds one in-loop poll: an idle PollRecords blocks until
+// records arrive, and the poll now runs under p.mu, so without a deadline
+// a quiet topic would hold the lock forever and starve the rebuild
+// endpoint. A timed-out empty poll is just another quiet loop turn (the
+// drain precedent in the integration harness).
+const pollWait = time.Second
 
 // Rebuild is the drill (ticket #34): rewind the consumer group to the
 // earliest retained offset, then wipe every derived row AND the inbox —
@@ -80,11 +110,12 @@ func (p *Projector) Consume(ctx context.Context) error {
 //     a rewind would strand an empty projection with offsets at the head.
 //     Crash between the two, or a failed wipe: retry the endpoint, it is
 //     idempotent.
-//   - A batch polled before the rewind but applied after the wipe (it
-//     waited on mu) simply re-applies its events onto the wiped state —
-//     the (inbox row, derived rows) pair is written in one transaction,
-//     so every interleaving leaves each event applied exactly once, and
-//     the replay that follows redelivers everything anyway.
+//   - A batch in flight when the rewind arrives COMMITS before it: the
+//     loop's whole cycle (poll → apply → commit) and the rewind+wipe
+//     share one mutex (see Consume), so SetOffsets can never land
+//     between a batch's poll and its commit and no poll runs
+//     concurrently with the rewind — a pre-rewind batch can never
+//     re-commit head offsets over the wiped tables.
 //   - The Ticker carries no rebuild state: it is a pure fold over the
 //     trades (spec decision, ticket #32), so the next publish pass and
 //     the REST endpoints re-derive it from the replayed history.

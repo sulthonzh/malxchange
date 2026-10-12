@@ -31,7 +31,7 @@ type parkedEnvelope struct {
 	reason string
 }
 
-func applyFetches(ctx context.Context, db Pool, log *slog.Logger, cl *kgo.Client, fetches kgo.Fetches) error {
+func applyFetches(ctx context.Context, db Pool, log *slog.Logger, cl consumerClient, fetches kgo.Fetches) error {
 	var batch []decoded
 	var parks []parkedEnvelope
 	var recs []*kgo.Record

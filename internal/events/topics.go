@@ -21,7 +21,8 @@ var producedBy = map[string][]struct {
 		{TopicTradeFill, 1, 7 * 24 * time.Hour}, // settlement history
 		{TopicOrderCompleted, 1, 7 * 24 * time.Hour},
 		{TopicCancelRejected, 1, 24 * time.Hour},
-		{TopicMarketPlate, 1, time.Hour}, // transient; market persists last-known
+		{TopicMarketPlate, 1, time.Hour},            // transient; market persists last-known
+		{TopicMarketUpdated, 1, 7 * 24 * time.Hour}, // config history; replay converges
 	},
 	"market": {
 		{TopicTicker, 1, time.Hour},

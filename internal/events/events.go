@@ -27,6 +27,11 @@ const (
 	// TopicMarketPlate carries the once-per-batch full Depth per Market
 	// (ADR-0010); market persists the last-known plate, api relays it.
 	TopicMarketPlate = "market.plate"
+	// TopicMarketUpdated carries the self-contained full Market row
+	// (ticket #29): the lawful source for market's Market copy and api's
+	// listings, emitted at exchange boot and on every accepted config
+	// change. Retention matches trade.fill so a rebuild replay converges.
+	TopicMarketUpdated = "market.updated"
 	// TopicTicker carries the per-Market rolling summary (≤1s cadence,
 	// published by market; ADR-0011).
 	TopicTicker = "ticker"

@@ -177,6 +177,20 @@ services:
     environment:
       <<: *service-env
       MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_WALLET}
+      # chains profile endpoints (unset = watch-only for that family)
+      MAL_BTCD_URL: ${MAL_BTCD_URL:-https://btcd:8334}
+      MAL_BTCD_RPCUSER: ${MAL_BTCD_RPCUSER:-malxchange}
+      MAL_BTCD_RPCPASSWORD: ${MAL_BTCD_RPCPASSWORD}
+      MAL_LTCD_URL: ${MAL_LTCD_URL:-https://ltcd:9334}
+      MAL_LTCD_RPCUSER: ${MAL_LTCD_RPCUSER:-malxchange}
+      MAL_LTCD_RPCPASSWORD: ${MAL_LTCD_RPCPASSWORD}
+      MAL_EVM_RPC_URL: ${MAL_EVM_RPC_URL:-}
+      MAL_EVM_RPC_FALLBACK_URL: ${MAL_EVM_RPC_FALLBACK_URL:-}
+      MAL_TRON_ENDPOINT: ${MAL_TRON_ENDPOINT:-}
+      MAL_TRON_API_KEY: ${MAL_TRON_API_KEY:-}
+      MAL_CHAIN_TLS_SKIP_VERIFY: "true" # self-signed node certs inside compose
+      MAL_WALLET_KEYSTORE: ${MAL_WALLET_KEYSTORE:-}
+      MAL_HOT_KEYSTORE_PASSPHRASE: ${MAL_HOT_KEYSTORE_PASSPHRASE:-}
 
   admin:
     <<: *service

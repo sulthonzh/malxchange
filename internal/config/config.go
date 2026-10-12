@@ -115,6 +115,11 @@ func envDefault(key, def string) string {
 	return def
 }
 
+// EnvDefault returns the env var's value, or def when unset/empty.
+// Exported so service packages with their own MAL_* sections reuse one
+// helper instead of re-declaring it.
+func EnvDefault(key, def string) string { return envDefault(key, def) }
+
 func splitSeeds(s string) []string {
 	var out []string
 	for _, part := range strings.Split(s, ",") {

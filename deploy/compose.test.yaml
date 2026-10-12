@@ -9,6 +9,15 @@
 #
 # btcd/ltcd RPC uses the node's own self-signed TLS; probes use https -k.
 services:
+  # The test profile also publishes the dev-infra loopback ports so
+  # `make test-integration` (5432) and the service suite can run
+  # against it without the dev override.
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redpanda:
+    ports:
+      - "127.0.0.1:9092:29092"
   btcd:
     profiles: ["test"]
     command:
@@ -17,6 +26,10 @@ services:
       - --rpclisten=0.0.0.0:18556
       - --rpcuser=${MAL_BTCD_RPCUSER:-malxchange}
       - --rpcpass=${MAL_BTCD_RPCPASSWORD}
+      # coinbase pays the fixed test key m/84'/0'/0'/0/0 of the
+      # "abandon…about" mnemonic (cmd/devkeys prints it): tests hold
+      # the spending key, the node holds no wallet at all.
+      - --miningaddr=sb1qcr8te4kr609gcawutmrza0j4xv80jy8z7w2lls
     ports:
       - "127.0.0.1:18556:18556"
     volumes: []
@@ -25,7 +38,12 @@ services:
     profiles: ["test"]
     command:
       - --simnet
+      # --txindex for parity with btcd: RPC.Depth/getrawtransaction needs
+      # the tx index for UTXO families (ltcd panics in versionbits on
+      # `generate`, so E2E mining is skipped, but read-only RPC parity holds).
       - --txindex
+      # same fixed-key scheme on the LTC path m/84'/2'/0'/0/0
+      - --miningaddr=sltc1qjmxnz78nmc8nq77wuxh25n2es7rzm5c2y2c6jx
       - --rpclisten=0.0.0.0:19556
       - --rpcuser=${MAL_LTCD_RPCUSER:-malxchange}
       - --rpcpass=${MAL_LTCD_RPCPASSWORD}
@@ -42,3 +60,19 @@ services:
     command: ["--host", "0.0.0.0", "--port", "8545"]
     ports:
       - "127.0.0.1:8545:8545"
+
+  # Fake java-tron gRPC node (test infra, NOT a chain: no signature
+  # validation, in-RAM ledger — see cmd/tronstub). The wallet's chain
+  # E2E drives it in-process; this container serves the composed stack
+  # and CI probes.
+  tronstub:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args: { SERVICE: tronstub }
+    image: malxchange/tronstub:latest
+    profiles: ["test"]
+    restart: unless-stopped
+    command: ["--addr", ":50051", "--mine-interval", "1s"]
+    ports:
+      - "127.0.0.1:50051:50051"

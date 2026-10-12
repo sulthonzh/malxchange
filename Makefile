@@ -6,17 +6,25 @@ COMPOSE      = docker compose -f deploy/docker-compose.yaml
 COMPOSE_DEV  = $(COMPOSE) -f deploy/compose.override.yaml
 COMPOSE_TEST = $(COMPOSE) -f deploy/compose.test.yaml
 
-.PHONY: help dev-up dev-down dev-env test test-integration test-profile-up test-profile-down lint build-images installer-check
+.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e test-profile-up test-profile-down lint build-images installer-check
 
 help:
 	@echo "dev-up            start postgres+redpanda (loopback ports) for local dev"
 	@echo "dev-down          stop dev infra"
 	@echo "test              unit tests"
 	@echo "test-integration  integration tests against dev infra (boot it first)"
-	@echo "test-profile-up   boot the test profile (simnet chains + EVM devnet)"
+	@echo "test-chain-e2e    chain E2E against the test profile (boot it first)"
+	@echo "test-profile-up   boot the test profile (simnet chains + EVM devnet + tronstub)"
+	@echo "test-profile-down stop the test profile"
 	@echo "lint              go vet + gofmt check"
-	@echo "build-images      build all five service images"
+	@echo "build-images      build all service images"
 	@echo "installer-check   syntax-check the installer"
+
+test-chain-e2e:
+	@set -a; . deploy/.env; set +a; \
+	MAL_TEST_BTCD_USER=$${MAL_BTCD_RPCUSER:-malxchange} MAL_TEST_BTCD_PASS=$${MAL_BTCD_RPCPASSWORD} \
+	MAL_TEST_LTCD_USER=$${MAL_LTCD_RPCUSER:-malxchange} MAL_TEST_LTCD_PASS=$${MAL_LTCD_RPCPASSWORD} \
+	go test -count=1 -timeout 300s -tags chain_e2e ./internal/wallet/chain/...
 
 deploy/.env:
 	@echo "no deploy/.env found — seeding a throwaway dev one (DO NOT use in production)"
@@ -41,7 +49,7 @@ test-integration:
 	MAL_TEST_PG_SUPERUSER_PASSWORD=$${MAL_PG_SUPERUSER_PASSWORD} \
 	MAL_TEST_KAFKA_SEEDS=127.0.0.1:9092 \
 	MAL_TEST_KAFKA_USER=$${MAL_KAFKA_USER} MAL_TEST_KAFKA_PASSWORD=$${MAL_KAFKA_PASSWORD} \
-	go test -count=1 -timeout 240s -tags integration ./internal/...
+	go test -count=1 -timeout 240s -tags integration -p 1 ./internal/...
 
 test-profile-up: deploy/.env
 	$(COMPOSE_TEST) --profile test up -d --wait

@@ -1,6 +1,8 @@
 package market
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -112,5 +114,47 @@ func TestFoldTickerDeterministic(t *testing.T) {
 		if got := FoldTicker("BTC/USDT", now, order); got.Last != "50002" {
 			t.Errorf("same-instant fold Last = %q, want the greater fill ID's price 50002", got.Last)
 		}
+	}
+}
+
+// TestTickerWireShape pins the wire contract shared by the ticker topic
+// and the internal REST endpoints (they must match byte for byte): exactly
+// market/last/high/low/turnover, every money value a decimal string
+// (ADR-0005), no float and no Member/Order identifier anywhere.
+func TestTickerWireShape(t *testing.T) {
+	t.Parallel()
+	b, err := json.Marshal(events.Ticker{
+		Market: "BTC/USDT", Last: "50250.75", High: "51500.5",
+		Low: "49500.001", Turnover: "101.55085",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(b, &fields); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"market", "last", "high", "low", "turnover"}
+	if len(fields) != len(want) {
+		t.Errorf("Ticker wire fields = %v, want exactly %v", keys(fields), want)
+	}
+	for _, k := range want {
+		if _, ok := fields[k]; !ok {
+			t.Errorf("Ticker wire missing field %q", k)
+		}
+	}
+	for _, banned := range []string{"member", "order", "e+", "e-", "volume", "notional", "thumb"} {
+		if strings.Contains(string(b), banned) {
+			t.Errorf("Ticker wire carries %q:\n%s", banned, b)
+		}
+	}
+	// The empty window serializes honestly: empty strings and "0", never
+	// null, never a float zero.
+	b, err = json.Marshal(events.Ticker{Market: "ETH/USDT"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `{"market":"ETH/USDT","last":"","high":"","low":"","turnover":"0"}`; string(b) != want {
+		t.Errorf("empty Ticker wire = %s, want %s", b, want)
 	}
 }

@@ -372,6 +372,50 @@ func mustTime(t *testing.T, s string) time.Time {
 	return at
 }
 
+// TestCrashRedeliveryAppliesExactlyOnce: a crash between the Postgres
+// commit and the offset commit redelivers the same fill batch, and the
+// inbox dedupe applies it exactly once — no duplicate trades, no gaps.
+func TestCrashRedeliveryAppliesExactlyOnce(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("crash-1")
+
+	fill := events.TradeFill{
+		Market: "BTC/USDT", Seq: 1,
+		BuyOrderID: "ord-taker-1", SellOrderID: "ord-maker-1",
+		BuyMemberID: "bob", SellMemberID: "alice",
+		TakerSide: "buy",
+		Price:     "50000.10", Amount: "0.0002", Turnover: "10.00002",
+		BuyTurnover: "10.00002", BuyFee: "0.0000002", SellFee: "0.01000002",
+	}
+	s.fundAndFreeze(t, "alice", "bob", "BTC", "USDT", "0.0002", "10.00002")
+	s.produceFill(t, "fill-0001", time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC), fill)
+	s.crashAfter(t) // applies, never commits offsets
+
+	// A restarted consumer rejoins the same group and gets everything
+	// redelivered from the group offset.
+	s.consumer.Close()
+	s.newConsumer("crash-1")
+	s.drain(t)
+
+	var trades int
+	var distinct int
+	if err := s.pool.QueryRow(context.Background(),
+		`SELECT count(*), count(DISTINCT fill_id) FROM trades`).Scan(&trades, &distinct); err != nil {
+		t.Fatal(err)
+	}
+	if trades != 1 || distinct != 1 {
+		t.Errorf("trades after redelivery = %d (%d distinct), want exactly 1", trades, distinct)
+	}
+	var inboxRows int
+	if err := s.pool.QueryRow(context.Background(),
+		`SELECT count(*) FROM inbox WHERE message_key = 'fill:BTC/USDT'`).Scan(&inboxRows); err != nil {
+		t.Fatal(err)
+	}
+	if inboxRows != 1 {
+		t.Errorf("inbox rows = %d, want 1 (dedupe pair recorded)", inboxRows)
+	}
+}
+
 func keysOf(m map[string]any) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

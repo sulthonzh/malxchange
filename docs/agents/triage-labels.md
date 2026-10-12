@@ -12,4 +12,10 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
+A `ready-for-agent` ticket separates observation from inference: its
+analysis marks what was reproduced versus what is hypothesis, because
+the agent implements the ticket as written — a theory stated as fact
+ships as a wrong fix (in #26, the ticket's persistence-race theory was
+false; the flake was snapshot ordering).
+
 Edit the "Label in our tracker" column to match whatever vocabulary you actually use.

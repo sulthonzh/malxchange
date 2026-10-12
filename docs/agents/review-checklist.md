@@ -40,3 +40,25 @@ Member synonym yet required for Ledger accounts, "token" is banned for
 Coin yet correct for ERC-20 plumbing — so judge term-by-term; a global
 grep cannot do it. (Symptom: shipped `GET /internal/statements/{member}`;
 GLOSSARY bans "statement" for Journal.)
+
+## Read keyed collections by key, not by position
+
+A slice built by iterating a Go map has no stable order, so `s[0]` is a
+coin flip that re-flips on every call: tests flake in both directions
+and published endpoints shuffle their output. Sort the slice before
+publishing it, and have callers select the entry they mean by its key
+(see `statusFor` in the exchange tests). `make lint` greps for known
+positional reads; a new keyed collection gets the same discipline.
+(Symptom: `open orders after recovery = 2, want 0` in one run and
+`= 0, want 2` in the next — `Status()[0]` resolved a random Market
+(#26).)
+
+## Determinism guarantees ship pinned
+
+A change that promises determinism — stable ordering, reproducible
+folds, derived-once values — lands with the test that fails when the
+promise regresses, in the same commit. Repo precedent:
+TestDeterministicFold, TestRestoreRebuildsIdenticalBook,
+TestDepositIndexDeterminism.
+(Symptom: Engine.Status() ordered snapshots by map iteration until #26
+added both the sort and TestStatusStableMarketOrder.)

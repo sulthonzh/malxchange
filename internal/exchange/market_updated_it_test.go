@@ -14,9 +14,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/syaikhipin/malxchange/internal/events"
+	"github.com/syaikhipin/malxchange/internal/inbox"
 	"github.com/syaikhipin/malxchange/internal/kafka"
 	"github.com/syaikhipin/malxchange/internal/outbox"
 )
@@ -287,5 +289,69 @@ func TestNewMarketSurfacesOnWatch(t *testing.T) {
 	}
 	if got := decodeUpdated(t, envs[0]); got != wantSeedMarket("SOL/USDT", "SOL", "0.01", "0.001", 3, false) {
 		t.Errorf("new-market payload:\n got %+v", got)
+	}
+}
+
+// TestRestartRepublishesFreshIdsWithIdenticalRows: every boot republishes
+// one market.updated per known Market under a fresh envelope id (so a new
+// boot can never be deduped away by an older delivery of the same Market),
+// while the payload for an unchanged row is byte-identical — a redelivered
+// event carries the same self-contained row either way (acceptance 3).
+func TestRestartRepublishesFreshIdsWithIdenticalRows(t *testing.T) {
+	s := newStack(t)
+	createExchangeTopics(t, s)
+	startRelay(t, s)
+
+	f := startUpdatedFeed(t, s, "restart-ids-it")
+	boot1 := f.await(t, 2, 30*time.Second)
+
+	// Restart: a fresh engine recovers the same markets and republishes.
+	s.newEngine()
+	boot2 := f.await(t, 2, 30*time.Second)
+
+	first := map[string]events.Envelope{}
+	for _, env := range append(append([]events.Envelope{}, boot1...), boot2...) {
+		if prev, dup := first[env.Key]; dup {
+			if prev.ID == env.ID {
+				t.Errorf("market %s republished under the same id %s across boots", env.Key, env.ID)
+			}
+			if string(prev.Data) != string(env.Data) {
+				t.Errorf("market %s row changed across boots without an edit:\n%s\n%s", env.Key, prev.Data, env.Data)
+			}
+			continue
+		}
+		first[env.Key] = env
+	}
+	if len(first) != 2 {
+		t.Fatalf("expected BTC/USDT and ETH/USDT across both boots, got %v", keysOf(first))
+	}
+}
+
+// TestRedeliveryDedupesOnEnvelopeId: the same envelope delivered twice
+// (broker or outbox redelivery) applies exactly once when the consumer
+// dedupes on (key, id) — the identity exchange stamps is sufficient.
+func TestRedeliveryDedupesOnEnvelopeId(t *testing.T) {
+	s := newStack(t)
+	createExchangeTopics(t, s)
+	startRelay(t, s)
+
+	f := startUpdatedFeed(t, s, "redelivery-it")
+	envs := f.await(t, 1, 30*time.Second)
+	env := envs[0]
+
+	applies := 0
+	for range 2 {
+		err := pgx.BeginFunc(context.Background(), s.pool, func(tx pgx.Tx) error {
+			return inbox.Apply(context.Background(), tx, env.Key, env.ID, func(pgx.Tx) error {
+				applies++
+				return nil
+			})
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if applies != 1 {
+		t.Errorf("domain write applied %d times for one envelope id, want 1", applies)
 	}
 }

@@ -8,7 +8,6 @@
 package market
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -251,14 +250,22 @@ func TestKlineCrashRedeliveryAndReplayLeaveBarsUnchanged(t *testing.T) {
 		t.Errorf("bars changed after replaying the same Fill batch:\nbefore=%s\nafter=%s", before, after)
 	}
 
-	// The trade-side count is the double-count tripwire: exactly five
-	// fills, not ten.
+	// The double-count tripwire through the served surface: the 1m bars'
+	// fill counts sum to exactly five fills, not ten (spec #23 — assert
+	// through the endpoint, never the derived table).
+	status, body := s.getREST(t, "/internal/kline/BTC/USDT?interval=1m&limit=1000")
+	if status != http.StatusOK {
+		t.Fatalf("GET kline 1m = %d, want 200", status)
+	}
+	var bars []Kline
+	if err := json.Unmarshal(body, &bars); err != nil {
+		t.Fatalf("kline 1m response is not a JSON array: %v\n%s", err, body)
+	}
 	var klineFills int64
-	if err := s.pool.QueryRow(context.Background(),
-		`SELECT sum(fill_count) FROM klines WHERE "interval" = '1m'`).Scan(&klineFills); err != nil {
-		t.Fatal(err)
+	for _, b := range bars {
+		klineFills += b.FillCount
 	}
 	if klineFills != 5 {
-		t.Errorf("sum(fill_count) at 1m = %d, want 5 (no double-count)", klineFills)
+		t.Errorf("summed 1m fillCount = %d, want 5 (no double-count)", klineFills)
 	}
 }

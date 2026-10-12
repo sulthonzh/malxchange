@@ -48,8 +48,8 @@ func drillCfg(market, zone string, sort int, visible bool) events.MarketUpdated 
 // produceDrillSoup produces the deterministic event sequence every drill
 // derives from and returns the exact counts the rebuild must reproduce:
 // the Fills (trades may neither dupe nor lose one) and the total envelopes
-// (the inbox at rest holds exactly one row per applied event). Instants
-// ride a now-anchored base on whole-minute boundaries well inside the
+// (the inbox at rest holds exactly one row per event, applied or parked).
+// Instants ride a now-anchored base on whole-minute boundaries well inside the
 // Ticker window, and are deliberately out of event order — Seq stays
 // monotonic while OccurredAt jumps back and forth, the shape late Fills
 // and replay share.
@@ -294,7 +294,9 @@ func (s *itStack) postREST(t *testing.T, path string) (int, []byte) {
 	return resp.StatusCode, body
 }
 
-// countRows counts one whole table — the no-dupes/no-loss probe.
+// countRows counts one whole table — a rebuild tripwire: trades==Fills and
+// inbox==events have no REST equivalent (the REST surface already proves
+// the answers identical; these prove no dupe/loss hides underneath).
 func (s *itStack) countRows(t *testing.T, table string) int {
 	t.Helper()
 	var n int

@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"slices"
 	"testing"
 	"time"
 
@@ -57,87 +58,34 @@ func (s *itStack) produceCfg(t *testing.T, id string, at time.Time, m events.Mar
 	}
 }
 
-// marketRow is the full copy as it lands in market's own schema — the
-// convergence seam: at rest, one row per Market, equal to its last
-// consumed market.updated event ("" = unbounded, mirroring the wire).
-type marketRow struct {
-	Market     string
-	BaseCoin   string
-	QuoteCoin  string
-	BaseScale  int
-	QuoteScale int
-	TickSize   string
-	LotSize    string
-	MakerRate  string
-	TakerRate  string
-	MinPrice   string
-	MaxPrice   string
-	MinAmount  string
-	MaxAmount  string
-	MinTurnov  string
-	MktOrders  bool
-	Enabled    bool
-	Visible    bool
-	Sort       int
-	Zone       string
-	Featured   bool
-	MaxOpen    *int32
-	TTL        *int32
-}
-
-// readMarkets reads the whole copy keyed by Market (review checklist:
-// keyed reads, never positional).
-func readMarkets(t *testing.T, s *itStack) map[string]marketRow {
-	t.Helper()
-	rows, err := s.pool.Query(context.Background(), `
-		SELECT market, base_coin, quote_coin, base_scale, quote_scale,
-		       tick_size::text, lot_size::text,
-		       maker_fee_rate::text, taker_fee_rate::text,
-		       COALESCE(min_price::text, ''), COALESCE(max_price::text, ''),
-		       COALESCE(min_amount::text, ''), COALESCE(max_amount::text, ''),
-		       COALESCE(min_turnover::text, ''),
-		       market_orders_enabled, enabled, visible, sort, zone, featured,
-		       max_open_orders, ttl_seconds
-		FROM markets`)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	out := make(map[string]marketRow)
-	for rows.Next() {
-		var r marketRow
-		if err := rows.Scan(&r.Market, &r.BaseCoin, &r.QuoteCoin, &r.BaseScale, &r.QuoteScale,
-			&r.TickSize, &r.LotSize, &r.MakerRate, &r.TakerRate,
-			&r.MinPrice, &r.MaxPrice, &r.MinAmount, &r.MaxAmount, &r.MinTurnov,
-			&r.MktOrders, &r.Enabled, &r.Visible, &r.Sort, &r.Zone, &r.Featured,
-			&r.MaxOpen, &r.TTL); err != nil {
-			t.Fatal(err)
-		}
-		out[r.Market] = r
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-// wantRow converts a payload into the row the copy must hold at rest.
-func wantRow(m events.MarketUpdated) marketRow {
-	return marketRow{
+// wantSummary converts one payload into the listing row the visible
+// listing must serve for it (spec #23: tests assert what members/admins
+// observe through the api-proxied endpoints, never the derived tables'
+// internal shape).
+func wantSummary(m events.MarketUpdated) MarketSummary {
+	return MarketSummary{
 		Market: m.Market, BaseCoin: m.BaseCoin, QuoteCoin: m.QuoteCoin,
+		Zone: m.Zone, Sort: m.Sort, Featured: m.Featured,
 		BaseScale: m.BaseScale, QuoteScale: m.QuoteScale,
 		TickSize: m.TickSize, LotSize: m.LotSize,
-		MakerRate: m.MakerFeeRate, TakerRate: m.TakerFeeRate,
-		MinPrice: m.MinPrice, MaxPrice: m.MaxPrice,
-		MinAmount: m.MinAmount, MaxAmount: m.MaxAmount, MinTurnov: m.MinTurnover,
-		MktOrders: m.MarketOrdersEnabled, Enabled: m.Enabled, Visible: m.Visible,
-		Sort: m.Sort, Zone: m.Zone, Featured: m.Featured,
-		MaxOpen: m.MaxOpenOrders, TTL: m.TTLSeconds,
+	}
+}
+
+// assertListing asserts the visible listing equals want, row for row in
+// the served order (zone, then sort, then the Market tie-break) — extra
+// or missing Markets fail by name, no ghost rows in between.
+func assertListing(t *testing.T, s *itStack, want []MarketSummary) {
+	t.Helper()
+	got := getListing(t, s)
+	if !slices.Equal(got, want) {
+		t.Fatalf("listing:\n got %+v\nwant %+v", got, want)
 	}
 }
 
 // rowUpdatedAt reads one Market's copy timestamp, so redelivery can prove
-// the inbox skipped the write entirely.
+// the inbox skipped the write entirely. Rebuild tripwire: updated_at is
+// invisible on every REST surface, yet only this read distinguishes a
+// deduped redelivery from a silent rewrite.
 func rowUpdatedAt(t *testing.T, s *itStack, market string) time.Time {
 	t.Helper()
 	var ts time.Time
@@ -146,33 +94,6 @@ func rowUpdatedAt(t *testing.T, s *itStack, market string) time.Time {
 		t.Fatal(err)
 	}
 	return ts
-}
-
-// assertCopy asserts the copy at rest equals the last consumed event per
-// Market, with nothing extra (no ghost rows).
-func assertCopy(t *testing.T, s *itStack, want map[string]events.MarketUpdated) {
-	t.Helper()
-	got := readMarkets(t, s)
-	if len(got) != len(want) {
-		t.Fatalf("copy holds %d rows (%v), want %d", len(got), rowKeys(got), len(want))
-	}
-	for market, m := range want {
-		g, ok := got[market]
-		if !ok {
-			t.Fatalf("copy missing Market %s (has %v)", market, rowKeys(got))
-		}
-		if w := wantRow(m); g != w {
-			t.Errorf("copy of %s:\n got %+v\nwant %+v", market, g, w)
-		}
-	}
-}
-
-func rowKeys(m map[string]marketRow) []string {
-	out := make([]string, 0, len(m))
-	for k := range m {
-		out = append(out, k)
-	}
-	return out
 }
 
 // getListing fetches and decodes the visible listing.
@@ -231,28 +152,20 @@ func TestBootBurstConvergesCopyAndListing(t *testing.T) {
 	s.produceCfg(t, "cfg-burst-sol", time.Now().UTC(), sol)
 	s.drain(t)
 
-	want := map[string]events.MarketUpdated{"BTC/USDT": btc, "ETH/USDT": eth, "SOL/USDT": sol}
-	assertCopy(t, s, want)
-
-	// The visible listing: zone lexicographic ("innovation" < "main"),
-	// then sort, then symbol — SOL first despite sort 0.
-	listing := getListing(t, s)
-	assertOrder(t, listingMarkets(listing), []string{"SOL/USDT", "BTC/USDT", "ETH/USDT"})
-	btcRow := listing[1]
-	if btcRow.TickSize != "0.1" || btcRow.LotSize != "0.0001" ||
-		btcRow.BaseScale != 8 || btcRow.QuoteScale != 2 ||
-		btcRow.Zone != "main" || btcRow.Sort != 1 || !btcRow.Featured {
-		t.Errorf("BTC/USDT listing row = %+v", btcRow)
-	}
+	// The visible listing serves the copy exactly: zone lexicographic
+	// ("innovation" < "main"), then sort, then symbol — SOL first despite
+	// sort 0 — every row equal to its payload (spec #23: assert through
+	// the api-proxied endpoint, never the derived tables).
+	assertListing(t, s, []MarketSummary{wantSummary(sol), wantSummary(btc), wantSummary(eth)})
 
 	// Redelivery: identical envelopes, same IDs. The inbox drops them, so
-	// the copy neither grows nor even rewrites its rows.
+	// the listing neither grows nor even rewrites its rows.
 	before := rowUpdatedAt(t, s, "BTC/USDT")
 	s.produceCfg(t, "cfg-burst-btc", time.Now().UTC(), btc)
 	s.produceCfg(t, "cfg-burst-eth", time.Now().UTC(), eth)
 	s.produceCfg(t, "cfg-burst-sol", time.Now().UTC(), sol)
 	s.drain(t)
-	assertCopy(t, s, want)
+	assertListing(t, s, []MarketSummary{wantSummary(sol), wantSummary(btc), wantSummary(eth)})
 	if after := rowUpdatedAt(t, s, "BTC/USDT"); !after.Equal(before) {
 		t.Errorf("redelivery rewrote the copy: updated_at %v -> %v", before, after)
 	}
@@ -270,9 +183,7 @@ func TestConfigEditSurfacesWithoutRestart(t *testing.T) {
 	btc.BaseCoin = "BTC"
 	s.produceCfg(t, "cfg-edit-1", time.Now().UTC(), btc)
 	s.drain(t)
-	if listing := getListing(t, s); listing[0].TickSize != "0.1" || listing[0].Sort != 1 {
-		t.Fatalf("pre-edit listing row = %+v", listing[0])
-	}
+	assertListing(t, s, []MarketSummary{wantSummary(btc)})
 
 	// The edit: tick size, sort, and featured all change; unbounded
 	// min_price gains a collar. Fresh envelope ID, same Market key.
@@ -283,13 +194,9 @@ func TestConfigEditSurfacesWithoutRestart(t *testing.T) {
 	s.produceCfg(t, "cfg-edit-2", time.Now().UTC(), btc)
 	s.drain(t) // same process, same group — nothing restarted
 
-	listing := getListing(t, s)
-	assertOrder(t, listingMarkets(listing), []string{"BTC/USDT"})
-	row := listing[0]
-	if row.TickSize != "0.2" || row.Sort != 7 || !row.Featured {
-		t.Errorf("post-edit listing row = %+v", row)
-	}
-	assertCopy(t, s, map[string]events.MarketUpdated{"BTC/USDT": btc})
+	// The listing row carries the edit, whole — no restart, no duplicate
+	// or ghost row beside it.
+	assertListing(t, s, []MarketSummary{wantSummary(btc)})
 }
 
 // TestInvisibleMarketDropsFromListingKeepsServing: a Market flipped
@@ -333,13 +240,9 @@ func TestInvisibleMarketDropsFromListingKeepsServing(t *testing.T) {
 	s.produceCfg(t, "cfg-flip-eth-2", time.Now().UTC(), eth)
 	s.drain(t)
 
-	// Out of the listing, row kept (no ghost deletion)…
-	listing := getListing(t, s)
-	assertOrder(t, listingMarkets(listing), []string{"BTC/USDT"})
-	got := readMarkets(t, s)
-	if len(got) != 2 || got["ETH/USDT"].Visible {
-		t.Errorf("copy after flip = %d rows, ETH visible = %v", len(got), got["ETH/USDT"].Visible)
-	}
+	// Out of the listing — its row left the api-proxied surface while
+	// everything else about the Market keeps answering…
+	assertListing(t, s, []MarketSummary{wantSummary(btc)})
 
 	// …while its trades and Depth keep answering.
 	status, body := s.getREST(t, "/internal/trades/ETH/USDT")

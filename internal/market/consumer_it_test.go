@@ -399,18 +399,12 @@ func TestFillSequenceServesSanitizedTrades(t *testing.T) {
 		}
 	}
 
-	// No Member/Order identifier anywhere on the wire...
+	// No Member/Order identifier anywhere on the wire — the sanitized
+	// answer surface is the whole contract (spec #23: tests assert what
+	// the api-proxied endpoints serve, never the derived tables' shape).
 	for _, banned := range []string{"alice", "bob", "ord-maker-1", "ord-taker-1", "member", "orderId"} {
 		if strings.Contains(string(body), banned) {
 			t.Errorf("response body leaks %q:\n%s", banned, body)
-		}
-	}
-	// ...nor in the derived schema.
-	cols := schemaColumns(t, s.pool, "trades")
-	for _, c := range cols {
-		low := strings.ToLower(c)
-		if strings.Contains(low, "member") || strings.Contains(low, "order") {
-			t.Errorf("trades table carries identifier column %q", c)
 		}
 	}
 }
@@ -449,15 +443,21 @@ func TestCrashRedeliveryAppliesExactlyOnce(t *testing.T) {
 	s.newConsumer("crash-1")
 	s.drain(t)
 
-	var trades int
-	var distinct int
-	if err := s.pool.QueryRow(context.Background(),
-		`SELECT count(*), count(DISTINCT fill_id) FROM trades`).Scan(&trades, &distinct); err != nil {
-		t.Fatal(err)
+	// The redelivered Fill applies exactly once: the trade history serves
+	// exactly one row for it (what members see), not a duplicate.
+	status, body := s.getREST(t, "/internal/trades/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("GET /internal/trades/BTC/USDT = %d, want 200", status)
 	}
-	if trades != 1 || distinct != 1 {
-		t.Errorf("trades after redelivery = %d (%d distinct), want exactly 1", trades, distinct)
+	var trades []Trade
+	if err := json.Unmarshal(body, &trades); err != nil {
+		t.Fatalf("trades not a JSON array: %v\n%s", err, body)
 	}
+	if len(trades) != 1 || trades[0].ID != "fill-0001" {
+		t.Fatalf("trades after redelivery = %+v, want exactly fill-0001", trades)
+	}
+	// Rebuild tripwire: the inbox dedupe pair has no REST surface — one
+	// row proves the redelivery was deduped, not re-applied.
 	var inboxRows int
 	if err := s.pool.QueryRow(context.Background(),
 		`SELECT count(*) FROM inbox WHERE message_key = 'fill:BTC/USDT'`).Scan(&inboxRows); err != nil {
@@ -816,26 +816,6 @@ func keysOf(m map[string]any) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)
-	}
-	return out
-}
-
-func schemaColumns(t *testing.T, pool *pgxpool.Pool, table string) []string {
-	t.Helper()
-	rows, err := pool.Query(context.Background(),
-		`SELECT column_name FROM information_schema.columns
-		 WHERE table_schema = 'market' AND table_name = $1 ORDER BY column_name`, table)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	var out []string
-	for rows.Next() {
-		var c string
-		if err := rows.Scan(&c); err != nil {
-			t.Fatal(err)
-		}
-		out = append(out, c)
 	}
 	return out
 }

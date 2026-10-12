@@ -3,6 +3,8 @@ package market
 import (
 	"errors"
 	"time"
+
+	"github.com/shopspring/decimal"
 )
 
 // Interval is a stored Kline bar width (GLOSSARY: a Kline is an OHLCV bar
@@ -92,6 +94,80 @@ func (iv Interval) seconds() int64 {
 }
 
 const secondsPerDay = 24 * 60 * 60
+
+// fillPoint is one Fill's contribution to a Kline bar: its trade instant
+// (the envelope's OccurredAt), per-Market Fill Seq (tie-break), and the
+// money values (ADR-0005 decimal strings parsed exact).
+type fillPoint struct {
+	At       time.Time
+	Seq      int64
+	Price    decimal.Decimal
+	Amount   decimal.Decimal
+	Turnover decimal.Decimal
+}
+
+// barState is the accumulated fold state of one (Market, interval, bucket
+// open) bar. Open follows the earliest Fill instant, Close the latest —
+// instants, not arrival order, so an out-of-order Fill lands in its own
+// older bar without corrupting its neighbors. First/Last (instant + Seq)
+// are the fold's comparison keys, persisted so replayed and late Fills
+// recompute the same bar; Seq breaks ties between Fills at the same
+// instant (per-Market event order == Seq order, so the tie-break is
+// deterministic under redelivery and replay).
+type barState struct {
+	Exists   bool
+	Open     decimal.Decimal
+	High     decimal.Decimal
+	Low      decimal.Decimal
+	Close    decimal.Decimal
+	Amount   decimal.Decimal
+	Turnover decimal.Decimal
+	Fills    int64
+	FirstAt  time.Time
+	FirstSeq int64
+	LastAt   time.Time
+	LastSeq  int64
+}
+
+// foldBar folds one Fill into a bar: a fresh bar opens/highs/lows/closes at
+// the Fill's price; an existing bar widens high/low, adds amount and
+// turnover, counts the Fill, and moves open/close only when the Fill's
+// instant (ties by Seq) precedes the current first or follows the current
+// last.
+func foldBar(b barState, p fillPoint) barState {
+	if !b.Exists {
+		return barState{
+			Exists:   true,
+			Open:     p.Price,
+			High:     p.Price,
+			Low:      p.Price,
+			Close:    p.Price,
+			Amount:   p.Amount,
+			Turnover: p.Turnover,
+			Fills:    1,
+			FirstAt:  p.At, FirstSeq: p.Seq,
+			LastAt: p.At, LastSeq: p.Seq,
+		}
+	}
+	if p.At.Before(b.FirstAt) || (p.At.Equal(b.FirstAt) && p.Seq < b.FirstSeq) {
+		b.Open = p.Price
+		b.FirstAt, b.FirstSeq = p.At, p.Seq
+	}
+	if p.At.After(b.LastAt) || (p.At.Equal(b.LastAt) && p.Seq > b.LastSeq) {
+		b.Close = p.Price
+		b.LastAt, b.LastSeq = p.At, p.Seq
+	}
+	if p.Price.Cmp(b.High) > 0 {
+		b.High = p.Price
+	}
+	if p.Price.Cmp(b.Low) < 0 {
+		b.Low = p.Price
+	}
+	b.Amount = b.Amount.Add(p.Amount)
+	b.Turnover = b.Turnover.Add(p.Turnover)
+	b.Fills++
+	return b
+}
 
 // floorDiv is Euclidean integer division (rounds toward -infinity), so
 // pre-epoch instants bucket the same way post-epoch ones do.

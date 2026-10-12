@@ -1,4 +1,4 @@
--- 0004_market: market's own copy of the Market config (#33), converged by
+-- 0004_markets: market's own copy of the Market config (#33), converged by
 -- consuming market.updated (ticket #29). The event is the lawful source
 -- (self-contained full row), so no cross-schema read of exchange's markets
 -- table ever happens (schemas are isolated by design). Like everything in

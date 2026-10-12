@@ -1,4 +1,4 @@
--- 0003_market: Kline bars (ticket #31) — OHLCV history per stored
+-- 0003_kline: Kline bars (ticket #31) — OHLCV history per stored
 -- interval, folded from trade.fill in Fill event order. Writes are
 -- idempotent upserts on the natural key (market, interval, bucket_open),
 -- so crash redelivery and rebuild replay cannot double-count. Like

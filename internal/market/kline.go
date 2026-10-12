@@ -1,10 +1,16 @@
 package market
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/shopspring/decimal"
+
+	"github.com/syaikhipin/malxchange/internal/events"
+	"github.com/syaikhipin/malxchange/internal/money"
 )
 
 // Interval is a stored Kline bar width (GLOSSARY: a Kline is an OHLCV bar
@@ -167,6 +173,91 @@ func foldBar(b barState, p fillPoint) barState {
 	b.Turnover = b.Turnover.Add(p.Turnover)
 	b.Fills++
 	return b
+}
+
+// foldKlines folds one Fill into every stored interval's bar, inside the
+// caller's transaction (Fill event order comes from the consumer loop).
+// Each write is an upsert on the natural key (market, interval,
+// bucket_open): the current bar is read, folded, and the full row written,
+// so a bucket holds exactly one row no matter how many Fills land in it.
+// Combined with the inbox dedupe (each envelope applies exactly once),
+// crash redelivery and rebuild replay cannot double-count a bar.
+func foldKlines(ctx context.Context, tx pgx.Tx, at time.Time, f events.TradeFill) error {
+	price, err := money.Parse(f.Price)
+	if err != nil {
+		return fmt.Errorf("kline fold %s: price: %w", f.Market, err)
+	}
+	amount, err := money.Parse(f.Amount)
+	if err != nil {
+		return fmt.Errorf("kline fold %s: amount: %w", f.Market, err)
+	}
+	turnover, err := money.Parse(f.Turnover)
+	if err != nil {
+		return fmt.Errorf("kline fold %s: turnover: %w", f.Market, err)
+	}
+	// Fill Seq is per-Market monotonic and fits BIGINT for any real feed;
+	// the tie-break keys persist so late and replayed Fills recompute the
+	// identical bar.
+	p := fillPoint{At: at.UTC(), Seq: int64(f.Seq), Price: price, Amount: amount, Turnover: turnover}
+	for _, iv := range StoredIntervals {
+		open := bucketOpen(p.At, iv)
+		var raw struct{ Open, High, Low, Close, Amount, Turnover string }
+		var b barState
+		err := tx.QueryRow(ctx, `
+			SELECT open::text, high::text, low::text, close::text,
+			       amount::text, turnover::text, fill_count,
+			       first_at, first_seq, last_at, last_seq
+			FROM klines
+			WHERE market = $1 AND "interval" = $2 AND bucket_open = $3`,
+			f.Market, string(iv), open).
+			Scan(&raw.Open, &raw.High, &raw.Low, &raw.Close, &raw.Amount, &raw.Turnover, &b.Fills,
+				&b.FirstAt, &b.FirstSeq, &b.LastAt, &b.LastSeq)
+		switch {
+		case errors.Is(err, pgx.ErrNoRows):
+			// Fresh bucket: fold opens the bar.
+		case err != nil:
+			return fmt.Errorf("read kline %s %s @%s: %w", f.Market, iv, open.Format(time.RFC3339), err)
+		default:
+			b.Exists = true
+			// NUMERIC normalizes text (10.00 reads back as 10); parse
+			// through the money contract so the fold compares exact
+			// decimals. Values written by this fold always parse.
+			cols := []struct {
+				name string
+				raw  string
+				dst  *decimal.Decimal
+			}{
+				{"open", raw.Open, &b.Open},
+				{"high", raw.High, &b.High},
+				{"low", raw.Low, &b.Low},
+				{"close", raw.Close, &b.Close},
+				{"amount", raw.Amount, &b.Amount},
+				{"turnover", raw.Turnover, &b.Turnover},
+			}
+			for _, c := range cols {
+				d, err := money.Parse(c.raw)
+				if err != nil {
+					return fmt.Errorf("read kline %s %s @%s: %s %q: %w", f.Market, iv, open.Format(time.RFC3339), c.name, c.raw, err)
+				}
+				*c.dst = d
+			}
+		}
+		nb := foldBar(b, p)
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO klines (market, "interval", bucket_open, open, high, low, close,
+			                    amount, turnover, fill_count, first_at, first_seq, last_at, last_seq)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+			ON CONFLICT (market, "interval", bucket_open) DO UPDATE SET
+				open = EXCLUDED.open, high = EXCLUDED.high, low = EXCLUDED.low, close = EXCLUDED.close,
+				amount = EXCLUDED.amount, turnover = EXCLUDED.turnover, fill_count = EXCLUDED.fill_count,
+				first_at = EXCLUDED.first_at, first_seq = EXCLUDED.first_seq,
+				last_at = EXCLUDED.last_at, last_seq = EXCLUDED.last_seq`,
+			f.Market, string(iv), open, nb.Open, nb.High, nb.Low, nb.Close,
+			nb.Amount, nb.Turnover, nb.Fills, nb.FirstAt, nb.FirstSeq, nb.LastAt, nb.LastSeq); err != nil {
+			return fmt.Errorf("fold kline %s %s @%s: %w", f.Market, iv, open.Format(time.RFC3339), err)
+		}
+	}
+	return nil
 }
 
 // floorDiv is Euclidean integer division (rounds toward -infinity), so

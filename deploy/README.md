@@ -117,3 +117,9 @@ consumer group to the earliest retained offset, and the ordinary consume
 loop replays `trade.fill` / `market.plate` / `market.updated` back to an
 identical state — the drill the integration tests run verbatim. The
 endpoint is idempotent: a retry after a partial failure is always safe.
+
+Two deliberate edges of the read surface: the trades and Kline listings
+accept an explicit `limit` of 1–1000 only (absent = their defaults, 50
+trades / 500 bars), and `GET /internal/ticker/{market}` answers an empty
+summary — 200, honestly empty last/range, zero turnover — for a Market
+nobody knows yet, never a 404.

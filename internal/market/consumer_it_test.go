@@ -163,20 +163,26 @@ func (s *itStack) newConsumer(group string) {
 }
 
 // drain applies polled batches until quiet (no records for a moment).
+// Each poll gets its own short deadline: an idle PollRecords blocks until
+// its context expires, so the quiet window bounds the wait, not the whole
+// drain.
 func (s *itStack) drain(t *testing.T) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
 	quiet := 0
 	for quiet < 3 {
-		fetches := s.consumer.PollRecords(ctx, 100)
+		pollCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		fetches := s.consumer.PollRecords(pollCtx, 100)
+		cancel()
 		n := countRecords(fetches)
 		if n == 0 {
 			quiet++
 			continue
 		}
 		quiet = 0
-		if err := applyFetches(ctx, s.pool, slog.New(slog.NewTextHandler(os.Stderr, nil)), s.consumer, fetches); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := applyFetches(ctx, s.pool, slog.New(slog.NewTextHandler(os.Stderr, nil)), s.consumer, fetches)
+		cancel()
+		if err != nil {
 			t.Fatalf("apply: %v", err)
 		}
 	}
@@ -186,14 +192,17 @@ func (s *itStack) drain(t *testing.T) {
 // crash window between the Postgres commit and the offset commit.
 func (s *itStack) crashAfter(t *testing.T) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 	for {
-		fetches := s.consumer.PollRecords(ctx, 100)
+		pollCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		fetches := s.consumer.PollRecords(pollCtx, 100)
+		cancel()
 		if countRecords(fetches) == 0 {
 			return
 		}
-		if err := applyFetches(ctx, s.pool, slog.New(slog.NewTextHandler(os.Stderr, nil)), s.consumer, fetches); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		err := applyFetches(ctx, s.pool, slog.New(slog.NewTextHandler(os.Stderr, nil)), s.consumer, fetches)
+		cancel()
+		if err != nil {
 			t.Fatalf("apply: %v", err)
 		}
 		// offsets NOT committed: simulate process death right after the tx
@@ -326,8 +335,8 @@ func TestFillSequenceServesSanitizedTrades(t *testing.T) {
 	// Sanitized wire shape: exactly these keys, latest Fill first.
 	wantKeys := []string{"id", "price", "amount", "turnover", "takerSide", "time"}
 	want := []map[string]string{
-		{"id": "fill-0002", "price": "50000.1", "amount": "0.0003", "turnover": "15.00003", "takerSide": "buy"},
-		{"id": "fill-0001", "price": "50000.1", "amount": "0.0002", "turnover": "10.00002", "takerSide": "buy"},
+		{"id": "fill-0002", "price": "50000.10", "amount": "0.0003", "turnover": "15.00003", "takerSide": "buy"},
+		{"id": "fill-0001", "price": "50000.10", "amount": "0.0002", "turnover": "10.00002", "takerSide": "buy"},
 	}
 	wantTime := []string{t1.Format(time.RFC3339Nano), t0.Format(time.RFC3339Nano)}
 	for i, tr := range trades {
@@ -414,6 +423,180 @@ func TestCrashRedeliveryAppliesExactlyOnce(t *testing.T) {
 	if inboxRows != 1 {
 		t.Errorf("inbox rows = %d, want 1 (dedupe pair recorded)", inboxRows)
 	}
+}
+
+// producePlate builds and produces one market.plate envelope: whichever
+// sides changed in the batch, best first (side-wise partial).
+func (s *itStack) producePlate(t *testing.T, id string, at time.Time, p events.Plate) {
+	t.Helper()
+	_, body, err := events.New(id, p.Market, events.TopicMarketPlate, at, p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.producer.ProduceSync(context.Background(), &kgo.Record{
+		Topic: events.TopicMarketPlate, Key: []byte(p.Market), Value: body,
+	}).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// produceRawPlate produces a market.plate envelope from a hand-built JSON
+// payload — for shapes the events.Plate struct cannot express (a
+// present-but-empty side).
+func (s *itStack) produceRawPlate(t *testing.T, id string, at time.Time, payload string) {
+	t.Helper()
+	env := events.Envelope{
+		ID: id, Type: events.TopicMarketPlate, Key: "BTC/USDT", OccurredAt: at,
+		Data: json.RawMessage(payload),
+	}
+	body, err := json.Marshal(env)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.producer.ProduceSync(context.Background(), &kgo.Record{
+		Topic: events.TopicMarketPlate, Key: []byte(env.Key), Value: body,
+	}).FirstErr(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func levelTuples(t *testing.T, raw []byte, side string) [][2]string {
+	t.Helper()
+	var d Depth
+	if err := json.Unmarshal(raw, &d); err != nil {
+		t.Fatalf("depth response is not JSON: %v\n%s", err, raw)
+	}
+	lv := d.Bids
+	if side == "asks" {
+		lv = d.Asks
+	}
+	out := make([][2]string, 0, len(lv))
+	for _, l := range lv {
+		out = append(out, [2]string{l.Price, l.Amount})
+	}
+	return out
+}
+
+func wantLevels(t *testing.T, name string, got [][2]string, want ...[2]string) {
+	t.Helper()
+	if len(got) != len(want) {
+		t.Fatalf("%s = %v, want %v", name, got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("%s[%d] = %v, want %v", name, i, got[i], want[i])
+		}
+	}
+}
+
+// TestOneSidePlateMergePreservesOtherSide: a plate publish touching only
+// one side merges without wiping the other, and the snapshot returns the
+// full book best first. A side present-but-empty clears only itself.
+func TestOneSidePlateMergePreservesOtherSide(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("depth-1")
+	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+
+	// Full initial Depth.
+	s.producePlate(t, "plate-1", at, events.Plate{
+		Market: "BTC/USDT",
+		Bids:   []events.PlateLevel{{Price: "49999.80", Amount: "2"}, {Price: "49999.90", Amount: "1.5"}},
+		Asks:   []events.PlateLevel{{Price: "50000.20", Amount: "3"}, {Price: "50000.10", Amount: "0.7"}},
+	})
+	s.drain(t)
+
+	status, body := s.getREST(t, "/internal/depth/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("GET /internal/depth/BTC/USDT = %d, want 200", status)
+	}
+	// Full book best first: bids highest price first, asks lowest first —
+	// regardless of the order levels arrived in. The wire carries the
+	// produced decimal strings verbatim (NUMERIC keeps their scale).
+	wantLevels(t, "bids", levelTuples(t, body, "bids"),
+		[2]string{"49999.90", "1.5"}, [2]string{"49999.80", "2"})
+	wantLevels(t, "asks", levelTuples(t, body, "asks"),
+		[2]string{"50000.10", "0.7"}, [2]string{"50000.20", "3"})
+
+	// Bids-only publish: replaces the bid side, asks untouched. The
+	// replacement also drops a bid level that vanished from the Book.
+	s.producePlate(t, "plate-2", at.Add(time.Second), events.Plate{
+		Market: "BTC/USDT",
+		Bids:   []events.PlateLevel{{Price: "50000", Amount: "0.5"}},
+	})
+	s.drain(t)
+	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
+	wantLevels(t, "bids after one-side publish", levelTuples(t, body, "bids"),
+		[2]string{"50000", "0.5"})
+	wantLevels(t, "asks survive one-side publish", levelTuples(t, body, "asks"),
+		[2]string{"50000.10", "0.7"}, [2]string{"50000.20", "3"})
+
+	// A side published as present-but-empty clears only itself. The
+	// exchange producer cannot emit this today (events.Plate omits empty
+	// sides), but the wire contract allows it — and the keep/clear
+	// distinction is what separates a fully-consumed side from an
+	// untouched one.
+	s.produceRawPlate(t, "plate-3", at.Add(2*time.Second), `{"market":"BTC/USDT","bids":[]}`)
+	s.drain(t)
+	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
+	wantLevels(t, "bids after empty-side publish", levelTuples(t, body, "bids"))
+	wantLevels(t, "asks survive empty-side publish", levelTuples(t, body, "asks"),
+		[2]string{"50000.10", "0.7"}, [2]string{"50000.20", "3"})
+
+	// A publish with neither side (the engine's omitempty cold-start
+	// shape) changes nothing.
+	s.producePlate(t, "plate-4", at.Add(3*time.Second), events.Plate{Market: "BTC/USDT"})
+	s.drain(t)
+	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
+	wantLevels(t, "asks survive no-side publish", levelTuples(t, body, "asks"),
+		[2]string{"50000.10", "0.7"}, [2]string{"50000.20", "3"})
+}
+
+// TestDepthAnswersDuringPlateDrought: with no plates flowing, Depth still
+// answers from the last-known state — the engine being down must not
+// silence market-data REST (ADR-0011 Warmup rule).
+func TestDepthAnswersDuringPlateDrought(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("drought-1")
+	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+
+	s.producePlate(t, "plate-1", at, events.Plate{
+		Market: "ETH/USDT",
+		Bids:   []events.PlateLevel{{Price: "3000", Amount: "4"}},
+		Asks:   []events.PlateLevel{{Price: "3001", Amount: "2"}},
+	})
+	s.drain(t)
+	// Plates stop flowing here (drought); no consumer activity since.
+	s.consumer.Close()
+
+	status, body := s.getREST(t, "/internal/depth/ETH/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("GET /internal/depth/ETH/USDT = %d, want 200", status)
+	}
+	wantLevels(t, "bids during drought", levelTuples(t, body, "bids"), [2]string{"3000", "4"})
+	wantLevels(t, "asks during drought", levelTuples(t, body, "asks"), [2]string{"3001", "2"})
+}
+
+// TestDepthEmptyOnlyBeforeFirstPublish: before any publish for a Market the
+// Depth is empty (true cold start); the first publish makes it answerable.
+func TestDepthEmptyOnlyBeforeFirstPublish(t *testing.T) {
+	s := newStack(t)
+	s.newConsumer("cold-1")
+
+	status, body := s.getREST(t, "/internal/depth/BTC/USDT")
+	if status != http.StatusOK {
+		t.Fatalf("cold-start GET = %d, want 200", status)
+	}
+	wantLevels(t, "cold-start bids", levelTuples(t, body, "bids"))
+	wantLevels(t, "cold-start asks", levelTuples(t, body, "asks"))
+
+	at := time.Date(2026, 10, 12, 9, 0, 0, 0, time.UTC)
+	s.producePlate(t, "plate-1", at, events.Plate{
+		Market: "BTC/USDT",
+		Bids:   []events.PlateLevel{{Price: "49999", Amount: "1"}},
+	})
+	s.drain(t)
+	_, body = s.getREST(t, "/internal/depth/BTC/USDT")
+	wantLevels(t, "bids after first publish", levelTuples(t, body, "bids"), [2]string{"49999", "1"})
 }
 
 func keysOf(m map[string]any) []string {

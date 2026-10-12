@@ -22,6 +22,7 @@ type RPC struct {
 // symbols contain a slash ("BTC/USDT"), so the wildcard is greedy.
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("GET /trades/{market...}", r.trades)
+	mux.HandleFunc("GET /depth/{market...}", r.depth)
 }
 
 // Trade is the sanitized market-wide record of a Fill (GLOSSARY): the
@@ -98,6 +99,64 @@ func tradeLimit(req *http.Request) (int, error) {
 }
 
 var errBadLimit = errors.New("limit must be an integer between 1 and 1000")
+
+// DepthLevel is one aggregated price level of the last-known Depth.
+type DepthLevel struct {
+	Price  string `json:"price"` // decimal string (ADR-0005)
+	Amount string `json:"amount"`
+}
+
+// Depth is the Market's last-known full Depth, both sides best first. It
+// answers from the last-known state even when plates stop flowing (engine
+// down / Warmup, ADR-0011); it is empty only before any publish for that
+// Market (true cold start).
+type Depth struct {
+	Market string       `json:"market"`
+	Bids   []DepthLevel `json:"bids"`
+	Asks   []DepthLevel `json:"asks"`
+}
+
+// depth serves the last-known Depth of one Market. Levels come back in one
+// query (single snapshot, no side straddles a plate commit), ordered by
+// price descending and split: bids stay best-first (highest price), asks
+// reverse to best-first (lowest price).
+func (r *RPC) depth(w http.ResponseWriter, req *http.Request) {
+	market := req.PathValue("market")
+	rows, err := r.DB.Query(req.Context(), `
+		SELECT side, price::text, amount::text
+		FROM depth_levels
+		WHERE market = $1
+		ORDER BY price DESC`, market)
+	if err != nil {
+		writeErr(w, err)
+		return
+	}
+	defer rows.Close()
+
+	// A Market never published to answers two empty sides, never null.
+	d := Depth{Market: market, Bids: make([]DepthLevel, 0), Asks: make([]DepthLevel, 0)}
+	for rows.Next() {
+		var side string
+		var lv DepthLevel
+		if err := rows.Scan(&side, &lv.Price, &lv.Amount); err != nil {
+			writeErr(w, err)
+			return
+		}
+		if side == "buy" {
+			d.Bids = append(d.Bids, lv)
+		} else {
+			d.Asks = append(d.Asks, lv)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		writeErr(w, err)
+		return
+	}
+	for i, j := 0, len(d.Asks)-1; i < j; i, j = i+1, j-1 {
+		d.Asks[i], d.Asks[j] = d.Asks[j], d.Asks[i]
+	}
+	writeJSON(w, d)
+}
 
 func writeErr(w http.ResponseWriter, err error) {
 	status := http.StatusInternalServerError

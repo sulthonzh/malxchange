@@ -2,6 +2,9 @@
 // derived schema: Ticker, Kline, trades, last-known Depth (issue #23).
 package main
 
-import "github.com/syaikhipin/malxchange/internal/service"
+import (
+	"github.com/syaikhipin/malxchange/internal/market"
+	"github.com/syaikhipin/malxchange/internal/service"
+)
 
-func main() { service.Main("market", nil) }
+func main() { service.Main("market", market.Run) }

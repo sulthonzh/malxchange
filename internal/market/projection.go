@@ -171,10 +171,12 @@ func validateMarketUpdated(m events.MarketUpdated) error {
 	return nil
 }
 
-// applyFill projects one Fill into a sanitized Trade row. A Trade is the
+// applyFill projects one Fill into a sanitized Trade row and folds it into
+// every stored interval's Kline bar (ticket #31). A Trade is the
 // market-wide record of a Fill pair (GLOSSARY): the Fill's Member and Order
 // identifiers stay on trade.fill and are dropped here; the fill ID (the
-// envelope ID) is kept so clients can dedupe on reconnect (ADR-0011).
+// envelope ID) is kept so clients can dedupe on reconnect (ADR-0011). The
+// Kline bars carry the same discipline — market-wide OHLCV only.
 func applyFill(ctx context.Context, tx pgx.Tx, env events.Envelope, f events.TradeFill) error {
 	_, err := tx.Exec(ctx, `
 		INSERT INTO trades (fill_id, market, taker_side, price, amount, turnover, traded_at)
@@ -183,7 +185,7 @@ func applyFill(ctx context.Context, tx pgx.Tx, env events.Envelope, f events.Tra
 	if err != nil {
 		return fmt.Errorf("insert trade %s: %w", env.ID, err)
 	}
-	return nil
+	return foldKlines(ctx, tx, env.OccurredAt, f)
 }
 
 // applyPlate merges a side-wise partial Depth publish into the Market's

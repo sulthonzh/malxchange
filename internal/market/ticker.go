@@ -77,12 +77,15 @@ func FoldTicker(market string, now time.Time, fills []WindowFill) events.Ticker 
 }
 
 // knownMarkets lists every Market the projection knows: any Market with
-// trade history or a last-known Depth publish (the derived state this
-// service owns). The Ticker enumerates from here so a zero-Fill Market
-// publishes its empty summary too — the front never waits for a first
-// tick. Sorted by Market so callers never depend on query order.
+// config (the market.updated copy from #33), trade history, or a
+// last-known Depth publish (the derived state this service owns). The
+// Ticker enumerates from here so a zero-Fill Market publishes its empty
+// summary too — the front never waits for a first tick. Sorted by Market
+// so callers never depend on query order.
 func knownMarkets(ctx context.Context, db DB) ([]string, error) {
 	rows, err := db.Query(ctx, `
+		SELECT market FROM markets
+		UNION
 		SELECT market FROM trades
 		UNION
 		SELECT market FROM depth_levels

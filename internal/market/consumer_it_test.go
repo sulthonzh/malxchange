@@ -9,6 +9,8 @@ package market
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -21,7 +23,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -37,11 +38,6 @@ var (
 	itPGHost = os.Getenv("MAL_TEST_PG_HOST")
 	itPGPW   = os.Getenv("MAL_TEST_PG_SUPERUSER_PASSWORD")
 )
-
-// itDBName is unique per test-binary run: sibling worktrees and other
-// packages' runs share the dev Postgres, and a fixed throwaway name lets
-// concurrent runs trample each other's fills.
-var itDBName = "malxchange_itm_" + strings.ReplaceAll(uuid.NewString(), "-", "")[:12]
 
 func TestMain(m *testing.M) {
 	if itPGHost == "" || itPGPW == "" {
@@ -71,37 +67,48 @@ func newStack(t *testing.T) *itStack {
 	t.Helper()
 	ctx := context.Background()
 
+	// Unique throwaway DB per test binary: sibling tickets' IT suites run
+	// against the same dev Postgres, and a fixed name would let one
+	// worktree's DROP/recreate pull the floor out from under another's
+	// mid-test run (and cross-contaminate projections).
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	dbName := "malxchange_itm_" + hex.EncodeToString(suffix)
+
 	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
 		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+itDBName+` WITH (FORCE)`)
-	_, _ = admin.Exec(ctx, `CREATE DATABASE `+itDBName)
+	if _, err := admin.Exec(ctx,
+		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
+		t.Fatal(err)
+	}
 	admin.Close()
-	// The throwaway DB dies with the test run: unique names must not
-	// accumulate on the shared dev Postgres.
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
 		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
 			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
 		if err != nil {
 			return
 		}
 		defer admin.Close()
-		_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS `+itDBName+` WITH (FORCE)`)
+		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
 	})
 
 	mktURL := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=market",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, itDBName)
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName)
 	pool, err := pgxpool.New(ctx, mktURL)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(pool.Close)
 	_, _ = pool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS market`)
-	if err := pgmig.Run(pgURL(t, "market"), migrations.FS, "market"); err != nil {
+	if err := pgmig.Run(pgURL(t, dbName, "market"), migrations.FS, "market"); err != nil {
 		t.Fatalf("market migrations: %v", err)
 	}
 
@@ -109,13 +116,13 @@ func newStack(t *testing.T) *itStack {
 	// behind both orders. Market itself never reads it (cross-schema
 	// access is denied by design).
 	walletPool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=wallet",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, itDBName))
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName))
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(walletPool.Close)
 	_, _ = walletPool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS wallet`)
-	if err := pgmig.Run(pgURL(t, "wallet"), migrations.FS, "wallet"); err != nil {
+	if err := pgmig.Run(pgURL(t, dbName, "wallet"), migrations.FS, "wallet"); err != nil {
 		t.Fatalf("wallet migrations: %v", err)
 	}
 
@@ -134,7 +141,7 @@ func newStack(t *testing.T) *itStack {
 		t.Fatal(err)
 	}
 	t.Cleanup(producer.Close)
-	for _, topic := range []string{events.TopicTradeFill, events.TopicMarketPlate} {
+	for _, topic := range []string{events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated} {
 		if err := broker.CreateTopic(topic, 1, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -145,13 +152,13 @@ func newStack(t *testing.T) *itStack {
 	return s
 }
 
-func pgURL(t *testing.T, schema string) string {
+func pgURL(t *testing.T, db, schema string) string {
 	t.Helper()
 	u := url.URL{
 		Scheme:   "postgres",
 		User:     url.UserPassword(os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW),
 		Host:     itPGHost + ":5432",
-		Path:     "/" + itDBName,
+		Path:     "/" + db,
 		RawQuery: "sslmode=disable&search_path=" + schema,
 	}
 	return u.String()
@@ -172,8 +179,9 @@ func (s *itStack) startREST() {
 
 func (s *itStack) newConsumer(group string) {
 	s.t.Helper()
-	c, err := kafka.NewConsumer(s.cfg, group, []string{events.TopicTradeFill, events.TopicMarketPlate},
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
+	c, err := kafka.NewConsumer(s.cfg, group, []string{
+		events.TopicTradeFill, events.TopicMarketPlate, events.TopicMarketUpdated,
+	}, kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()))
 	if err != nil {
 		s.t.Fatal(err)
 	}

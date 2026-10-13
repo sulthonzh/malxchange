@@ -23,3 +23,5 @@ Rules the code reviewer enforces on every diff. See `docs/agents/review-checklis
 ### Worktrees
 
 Sibling worktrees under `../spec24-wt/` hold in-flight ticket branches; the primary checkout is merge-only. Editing code: address files by absolute path and confirm the first edit of a session with `git status` in the intended worktree — a relative path can silently land in the primary checkout.
+
+Worktrees lack gitignored `deploy/.env` — copy it from the primary checkout before any `make` target that talks to the dev infra; `make` refuses with this hint rather than seeding mismatched credentials.

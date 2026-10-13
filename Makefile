@@ -5,8 +5,14 @@
 COMPOSE      = docker compose -f deploy/docker-compose.yaml
 COMPOSE_DEV  = $(COMPOSE) -f deploy/compose.override.yaml
 COMPOSE_TEST = $(COMPOSE) -f deploy/compose.test.yaml
+# deploy/.env is gitignored, so a fresh worktree lacks it — and the
+# seeding rule below would mint random creds that don't match the
+# primary checkout's running dev stack. Targets that merely source it
+# refuse with the fix instead (dev-up/test-profile-up keep the seeding:
+# they boot their own stack with whatever they seed).
+ENV_GUARD = @test -f deploy/.env || { echo "deploy/.env missing (worktree checkout?) — cp it from the primary checkout; a seeded one has random creds that won't match the running dev stack" >&2; exit 1; }
 
-.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e test-profile-up test-profile-down test-profile-probe lint build-images installer-check hooks
+.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e test-profile-up test-profile-down test-profile-probe it-db-leftovers lint build-images installer-check hooks
 
 help:
 	@echo "dev-up            start postgres+redpanda (loopback ports) for local dev"
@@ -19,11 +25,13 @@ help:
 	@echo "test-profile-up   boot the test profile (simnet chains + EVM devnet + tronstub)"
 	@echo "test-profile-down stop the test profile"
 	@echo "test-profile-probe health-check the chain nodes of the test profile"
+	@echo "it-db-leftovers    audit dev Postgres for throwaway IT litter (read-only)"
 	@echo "lint              go vet + gofmt + env-doc drift + checks"
 	@echo "build-images      build all service images"
 	@echo "installer-check   syntax-check the installer"
 
 test-chain-e2e:
+	$(ENV_GUARD)
 	@set -a; . deploy/.env; set +a; \
 	MAL_TEST_BTCD_USER=$${MAL_BTCD_RPCUSER:-malxchange} MAL_TEST_BTCD_PASS=$${MAL_BTCD_RPCPASSWORD} \
 	MAL_TEST_LTCD_USER=$${MAL_LTCD_RPCUSER:-malxchange} MAL_TEST_LTCD_PASS=$${MAL_LTCD_RPCPASSWORD} \
@@ -35,6 +43,7 @@ test-chain-e2e:
 # https://exchange.example.com (mapped inside Chromium), so api and
 # WebSocket are same-origin as in production.
 member-e2e:
+	$(ENV_GUARD)
 	@set -a; . deploy/.env; set +a; \
 	$(COMPOSE_TEST) --profile test --profile e2e up -d --build; \
 	cd apps/web && npx playwright test
@@ -44,6 +53,7 @@ member-e2e:
 # a node that latched (see deploy/README "Chain test-profile gotchas")
 # answers garbage until recreated.
 test-profile-probe:
+	$(ENV_GUARD)
 	@set -a; . deploy/.env; set +a; \
 	echo "btcd:" && curl -fsSk -H 'Content-Type: application/json' -u "$${MAL_BTCD_RPCUSER:-malxchange}:$$MAL_BTCD_RPCPASSWORD" --data-binary '{"jsonrpc":"1.0","id":"probe","method":"getblockcount","params":[]}' https://127.0.0.1:18556 && \
 	echo "ltcd:" && curl -fsSk -H 'Content-Type: application/json' -u "$${MAL_LTCD_RPCUSER:-malxchange}:$$MAL_LTCD_RPCPASSWORD" --data-binary '{"jsonrpc":"1.0","id":"probe","method":"getblockcount","params":[]}' https://127.0.0.1:19556 && \
@@ -68,6 +78,7 @@ test:
 # Integration tests talk to the dev infra over loopback; the superuser
 # credential comes from deploy/.env (same one the compose init uses).
 test-integration:
+	$(ENV_GUARD)
 	set -a; . deploy/.env; set +a; \
 	MAL_TEST_PG_HOST=127.0.0.1 MAL_TEST_PG_SUPERUSER=$${MAL_PG_SUPERUSER} \
 	MAL_TEST_PG_SUPERUSER_PASSWORD=$${MAL_PG_SUPERUSER_PASSWORD} \
@@ -81,11 +92,23 @@ test-profile-up: deploy/.env
 test-profile-down:
 	$(COMPOSE_TEST) --profile test down
 
+# Audit the dev Postgres for throwaway IT litter: databases and the it_
+# roles of the it stack. Cleanups fire on normal exit only, so a killed
+# run leaks; this lists, it never drops.
+it-db-leftovers:
+	$(ENV_GUARD)
+	@set -a; . deploy/.env; set +a; \
+	$(COMPOSE_DEV) exec -T postgres psql -U "$${MAL_PG_SUPERUSER}" -d postgres -tAc \
+	  "SELECT 'db: ' || datname FROM pg_database WHERE datname LIKE 'malxchange\_it%' ESCAPE '\' UNION ALL SELECT 'role: ' || rolname FROM pg_roles WHERE rolname LIKE 'it\_%' ESCAPE '\'"
+
 lint:
 	go vet ./...
 	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
 	@hits=$$(grep -rnF 'Status()[' --include='*.go' cmd internal); if [ -n "$$hits" ]; then \
 		echo "positional Status() index — map order is random; select by market (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
+	@hits=$$( { grep -rnE '(DROP|CREATE) DATABASE (IF EXISTS )?malxchange_[a-z0-9]+' --include='*_test.go' internal; \
+	           grep -rnE '"malxchange_it[a-z0-9_]*"' --include='*_test.go' internal | grep -vE 'malxchange_it[a-z]*_" \+ hex'; } ); if [ -n "$$hits" ]; then \
+		echo "fixed IT database name — mint a per-binary throwaway (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@hits=$$(grep -nF 'addr + "/healthz"' internal/service/service.go); if [ -n "$$hits" ]; then \
 		echo "self-healthcheck probes liveness (/healthz answers ok unconditionally) — probe /readyz or a dead worker reads healthy (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@{ grep -rhoE '\$$\{MAL_[A-Z0-9_]+' deploy/*.yaml 2>/dev/null | sed 's/\$${//'; \

@@ -75,6 +75,48 @@ func TelegramCodeMessage(code string, ttl time.Duration) (string, error) {
 	return b.String(), nil
 }
 
+var securityCodeTmpl = template.Must(template.New("security-code").Parse(
+	`Enter this verification code to {{.Action}}: {{.Code}}.
+
+The code expires in {{.ExpiresIn}} and can be used only once.
+
+If you did not request this, you can ignore this email.`))
+
+type securityCodeData struct {
+	Code      string
+	Action    string
+	ExpiresIn string
+}
+
+// SecurityCodeEmail renders a sensitive-flow Verification code email;
+// action is the member-facing purpose ("change your password",
+// "confirm your new email address", …) interpolated at one point.
+func SecurityCodeEmail(code string, ttl time.Duration, action string) (subject, body string, err error) {
+	var b strings.Builder
+	if err := securityCodeTmpl.Execute(&b, securityCodeData{Code: code, Action: action, ExpiresIn: ttlWords(ttl)}); err != nil {
+		return "", "", fmt.Errorf("api: security code template: %w", err)
+	}
+	return "Your verification code", b.String(), nil
+}
+
+var authenticatorResetTmpl = template.Must(template.New("authenticator-reset").Parse(
+	`Your authenticator was reset by our support team after an identity check.
+
+Withdrawals stay blocked until you bind a new authenticator in your member center security settings.
+
+If you did not ask for this reset, contact support immediately.`))
+
+// AuthenticatorResetEmail is the notification every reset sends the
+// member (bound phone or Telegram channels are notified too — see the
+// admin reset flow).
+func AuthenticatorResetEmail() (subject, body string, err error) {
+	var b strings.Builder
+	if err := authenticatorResetTmpl.Execute(&b, nil); err != nil {
+		return "", "", fmt.Errorf("api: authenticator reset template: %w", err)
+	}
+	return "Your authenticator was reset", b.String(), nil
+}
+
 // ttlWords renders a TTL as plain English words for template
 // interpolation.
 func ttlWords(d time.Duration) string {

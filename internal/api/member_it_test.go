@@ -156,6 +156,8 @@ func newStack(t *testing.T) *itStack {
 	member := &memberAPI{pool: pool, env: env, mailer: mailer,
 		ob: outbox.New(pool), log: testLogger()}
 	member.RegisterMember(root)
+	member.RegisterSensitive(root)
+	member.RegisterSensitiveAdmin(internal)
 	channels := &channelAPI{pool: pool, env: env, log: testLogger()}
 	channels.RegisterChannels(root)
 	channels.RegisterChannelAdmin(internal)

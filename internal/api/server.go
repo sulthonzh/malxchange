@@ -18,6 +18,8 @@ func Run(ctx context.Context, d service.Deps) error {
 
 	member := &memberAPI{pool: d.Pool, env: env, mailer: mailer, ob: d.Outbox, log: d.Log}
 	member.RegisterMember(d.Public)
+	member.RegisterSensitive(d.Public)
+	member.RegisterSensitiveAdmin(d.Internal)
 
 	channels := &channelAPI{pool: d.Pool, env: env, log: d.Log}
 	channels.RegisterChannels(d.Public)
@@ -35,7 +37,7 @@ func Run(ctx context.Context, d service.Deps) error {
 	// Member funds (ticket #40): balances, deposits, records, the
 	// withdrawal gate, and the withdrawal address book — wallet's
 	// internal RPC proxied one to one.
-	funds := newFundsAPI(d.Pool, newWalletClient(LoadFundsConfig(), d.Log), closedGate{}, member.withSession, d.Log)
+	funds := newFundsAPI(d.Pool, newWalletClient(LoadFundsConfig(), d.Log), securityGate{pool: d.Pool}, member.withSession, d.Log)
 	funds.Register(d.Public)
 
 	// Parallel-ticket registrars mount here as they land (WebSocket hub).

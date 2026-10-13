@@ -241,23 +241,13 @@ func (c *walletClient) withdraw(ctx context.Context, member, coin, address, amou
 
 // memberGate is the member-identity half of the withdrawal gate:
 // KYC state, Authenticator binding, and live Authenticator code
-// verification (GLOSSARY terms; avoid "2FA"). Ticket #39 owns the
-// implementation against the KYC applications and TOTP bindings; until
-// it lands, closedGate answers no to everything, so the withdrawal
-// path is fully wired and tested but stays closed in production.
+// verification (GLOSSARY terms; avoid "2FA"). The production
+// implementation is securityGate (sensitive.go, ticket #39); the ITs
+// substitute a stub with the same matrix.
 type memberGate interface {
 	KYCVerified(ctx context.Context, memberID string) (bool, error)
 	AuthenticatorBound(ctx context.Context, memberID string) (bool, error)
 	VerifyAuthenticatorCode(ctx context.Context, memberID, code string) (bool, error)
-}
-
-// closedGate is the pre-#39 gate: every answer is no.
-type closedGate struct{}
-
-func (closedGate) KYCVerified(context.Context, string) (bool, error)        { return false, nil }
-func (closedGate) AuthenticatorBound(context.Context, string) (bool, error) { return false, nil }
-func (closedGate) VerifyAuthenticatorCode(context.Context, string, string) (bool, error) {
-	return false, nil
 }
 
 // ---- the funds routes ----

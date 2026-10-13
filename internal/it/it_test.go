@@ -9,6 +9,8 @@ package it
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -60,14 +62,35 @@ func TestMain(m *testing.M) {
 		fmt.Println("skipping integration tests: MAL_TEST_PG_HOST / MAL_TEST_PG_SUPERUSER_PASSWORD not set (run: make test-integration)")
 		os.Exit(0)
 	}
+	// Unique throwaway names per test binary: sibling worktrees' IT runs
+	// share the dev Postgres, and fixed database or role names would let
+	// one run's DROP/recreate pull the floor out from under another's
+	// mid-test run.
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		fmt.Println("mint throwaway names:", err)
+		os.Exit(1)
+	}
+	testDB = "malxchange_it_" + hex.EncodeToString(suffix)
+	roleSuffix = hex.EncodeToString(suffix)
 	os.Exit(m.Run())
 }
 
-const testDB = "malxchange_it"
+// Minted once per test binary (see TestMain). The roles carry the same
+// suffix: they are cluster-global, so a fixed name would collide across
+// concurrent runs the way the database name does.
+var (
+	testDB     string
+	roleSuffix string
+)
+
+// itRole is this binary's throwaway role/schema name for svc.
+func itRole(svc string) string { return "it_" + roleSuffix + "_" + svc }
 
 // freshDB drops and recreates the throwaway database and the per-service
-// roles (roles are cluster-global, so a leftover from a previous run
-// would break CREATE ROLE); every test gets a clean slate.
+// roles (both named per test binary; a leftover within this binary — a
+// cleanup whose reconnect failed — would break CREATE ROLE); every test
+// gets a clean slate.
 func freshDB(t *testing.T) {
 	t.Helper()
 	ctx := context.Background()
@@ -79,8 +102,11 @@ func freshDB(t *testing.T) {
 	if _, err := admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, testDB)); err != nil {
 		t.Fatalf("drop: %v", err)
 	}
+	// config.Services must stay in lockstep with migrations.Services (the
+	// schema tests iterate the latter): a divergence would leave minted
+	// roles undropped and break the next CREATE ROLE.
 	for _, svc := range config.Services {
-		name := "it_" + svc // prod-named roles belong to the dev stack, not us
+		name := itRole(svc) // prod-named roles belong to the dev stack, not us
 		if _, err := admin.Exec(ctx, fmt.Sprintf(`DROP ROLE IF EXISTS "%s"`, name)); err != nil {
 			t.Fatalf("drop role %s: %v", name, err)
 		}
@@ -88,15 +114,29 @@ func freshDB(t *testing.T) {
 	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, testDB)); err != nil {
 		t.Fatalf("create: %v", err)
 	}
+	t.Cleanup(func() {
+		admin, err := pgxpool.New(ctx, superURL("postgres"))
+		if err != nil {
+			return
+		}
+		defer admin.Close()
+		// Database first: this binary's roles own schemas inside it, and
+		// DROP ROLE refuses while they still do.
+		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, testDB))
+		for _, svc := range config.Services {
+			_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP ROLE IF EXISTS "%s"`, itRole(svc)))
+		}
+	})
 }
 
-// setupServiceSchema mints a throwaway role+schema named it_<svc>. Roles
-// are cluster-global and the dev stack already has prod-named ones (with
-// grants on the real database), so tests must not reuse those names. The
-// migration set still comes from the service's directory.
+// setupServiceSchema mints a throwaway role+schema named it_<suffix>_<svc>
+// (the per-binary suffix from TestMain). Roles are cluster-global and the
+// dev stack already has prod-named ones (with grants on the real
+// database), so tests must not reuse those names. The migration set still
+// comes from the service's directory.
 func setupServiceSchema(t *testing.T, svc string) config.PG {
 	t.Helper()
-	name := "it_" + svc
+	name := itRole(svc)
 	ctx := context.Background()
 	admin, err := pgxpool.New(ctx, superURL(testDB))
 	if err != nil {
@@ -151,7 +191,7 @@ func TestMigrationsLandInEachServiceSchema(t *testing.T) {
 func TestSchemaIsolationBlocksCrossServiceReads(t *testing.T) {
 	freshDB(t)
 	apiCfg := setupServiceSchema(t, "api")
-	setupServiceSchema(t, "wallet")
+	walletCfg := setupServiceSchema(t, "wallet")
 	if err := pgmig.Run(apiCfg.URL(), migrations.FS, "api"); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +207,7 @@ func TestSchemaIsolationBlocksCrossServiceReads(t *testing.T) {
 		t.Fatalf("api cannot read its own outbox: %v", err)
 	}
 	// ...and cannot even see wallet's schema (USAGE denied by default).
-	_, err = pool.Exec(ctx, `SELECT count(*) FROM it_wallet.outbox`)
+	_, err = pool.Exec(ctx, fmt.Sprintf(`SELECT count(*) FROM %s.outbox`, walletCfg.Schema))
 	if err == nil {
 		t.Fatal("api could read wallet.outbox — schema isolation broken")
 	}

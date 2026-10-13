@@ -40,6 +40,7 @@ export function stubNuxtGlobals(vue: VueModule, overrides: NuxtOverrides = {}): 
   vi.stubGlobal('useRoute', overrides.useRoute ?? (() => ({ query: {} })))
   vi.stubGlobal('navigateTo', overrides.navigateTo ?? vi.fn())
   vi.stubGlobal('useHead', () => {})
+  vi.stubGlobal('definePageMeta', () => {})
 }
 
 /** Mount a page with the shared ElementPlus chrome and NuxtLink stub. */

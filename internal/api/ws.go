@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -41,6 +42,7 @@ const (
 	wsPingInterval  = 30 * time.Second
 	wsReadLimit     = 4096                          // subscribe envelopes are tiny; anything larger is abuse
 	wsSlowCloseCode = websocket.StatusTryAgainLater // 1013: overflow teardown when the peer is reachable
+	wsAuthProtocol  = "access-auth-token"           // browser token carriage: Sec-WebSocket-Protocol
 )
 
 // wsClient is one connected socket: its session binding, its bounded
@@ -101,9 +103,22 @@ func RegisterWS(ctx context.Context, mux *http.ServeMux, hub *Hub, pool *pgxpool
 // socket's lifetime. The write pump runs in its own goroutine; the only
 // writer is that pump, so no write concurrency exists.
 func (s *wsServer) handleWS(w http.ResponseWriter, r *http.Request) {
+	// The token arrives as the access-auth-token header when a client
+	// can set one, else as a two-element Sec-WebSocket-Protocol list
+	// ("access-auth-token", token) — browsers cannot set handshake
+	// headers, and the subprotocol keeps the credential out of URLs,
+	// where it would ride logs and proxies. Anything else in the list
+	// is refused rather than guessed at.
 	token := r.Header.Get("access-auth-token")
+	var protocols []string
 	if token == "" {
-		token = r.URL.Query().Get("token")
+		protocols = wsSubprotocols(r)
+		if len(protocols) == 2 && protocols[0] == wsAuthProtocol {
+			token = protocols[1]
+		} else if len(protocols) > 0 {
+			WriteError(w, http.StatusUnauthorized, "This WebSocket speaks the access-auth-token subprotocol or nothing.")
+			return
+		}
 	}
 	memberID := ""
 	if token != "" {
@@ -115,12 +130,18 @@ func (s *wsServer) handleWS(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		memberID = sess.MemberID
+		// Echo the negotiated subprotocol so the browser handshake
+		// completes.
+		protocols = []string{wsAuthProtocol, token}
 	}
 
 	// Caddy terminates TLS and the session token (not the browser
 	// origin) is the credential; anonymous sockets carry public data
 	// only, so there is no cross-site hijack surface to close here.
-	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{OriginPatterns: []string{"*"}})
+	conn, err := websocket.Accept(w, r, &websocket.AcceptOptions{
+		OriginPatterns: []string{"*"},
+		Subprotocols:   protocols,
+	})
 	if err != nil {
 		return
 	}
@@ -140,6 +161,20 @@ func (s *wsServer) handleWS(w http.ResponseWriter, r *http.Request) {
 
 	go client.writePump(s.ctx)
 	s.readLoop(client)
+}
+
+// wsSubprotocols splits the Sec-WebSocket-Protocol header the way the
+// handshake spec means it: comma-separated, order preserved.
+func wsSubprotocols(r *http.Request) []string {
+	var out []string
+	for _, header := range r.Header.Values("Sec-WebSocket-Protocol") {
+		for _, part := range strings.Split(header, ",") {
+			if name := strings.TrimSpace(part); name != "" {
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }
 
 // wsClientMessage is the subscribe/unsubscribe envelope from the client.

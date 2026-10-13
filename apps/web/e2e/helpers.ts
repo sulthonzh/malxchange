@@ -24,8 +24,15 @@ export async function register(request: APIRequestContext, email: string, passwo
   return (await res.json()) as AuthTicket
 }
 
-export async function authed(request: APIRequestContext, token: string, path: string, body?: unknown) {
-  return request.post(`${API}${path}`, {
+export async function authed(
+  request: APIRequestContext,
+  token: string,
+  path: string,
+  body?: unknown,
+  method: 'POST' | 'PUT' = 'POST',
+) {
+  return request.fetch(`${API}${path}`, {
+    method,
     data: body ?? {},
     headers: { 'access-auth-token': token },
   })

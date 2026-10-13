@@ -78,7 +78,8 @@ test('ws channel authorization: anonymous cannot take orders, no member ID in ch
   expect(serverChannels.every((c) => !c.includes(ticket.member.id))).toBe(true)
   anon.close()
 
-  const authedSocket = new WebSocket(`${wsUrl}?token=${ticket.token}`)
+  // The browser path: the token rides Sec-WebSocket-Protocol, not the URL.
+  const authedSocket = new WebSocket(wsUrl, ['access-auth-token', ticket.token])
   await new Promise<void>((resolve) => authedSocket.once('open', () => resolve()))
   await subscribe(authedSocket, 'orders')
   authedSocket.close()
@@ -106,6 +107,42 @@ test('decimal exactness: trailing zeros survive the member orders', async ({ req
     amount: '0.0002',
   })
   expect([202, 409]).toContain(onLot.status())
+
+  // Every money endpoint answers decimal strings (ADR-0005): the fee
+  // preview echoes the requested amount verbatim, and wallet accounts
+  // carry string balances.
+  const fee = await request.get(`${API}/uc/wallet/withdraw-fee?coin=BTC&amount=0.0010`, {
+    headers: { 'access-auth-token': ticket.token },
+  })
+  if (fee.ok()) {
+    const body = (await fee.json()) as Record<string, unknown>
+    expect(String(body.amount)).toBe('0.0010')
+    expect(typeof body.fee).toBe('string')
+  }
+  const accounts = await request.get(`${API}/uc/wallet/accounts`, {
+    headers: { 'access-auth-token': ticket.token },
+  })
+  expect(accounts.ok()).toBe(true)
+  for (const account of (await accounts.json()) as Array<{ available?: unknown; frozen?: unknown }>) {
+    expect(typeof account.available).toBe('string')
+    expect(typeof account.frozen).toBe('string')
+  }
+})
+
+test('favorites: the member watchlist round-trips through the api', async ({ request }) => {
+  const email = `favor-${Date.now()}@example.com`
+  const ticket = await register(request, email, PASSWORD)
+  const put = await authed(request, ticket.token, '/uc/favorites', { markets: ['BTC/USDT', 'ETH/USDT'] }, 'PUT')
+  expect(put.ok()).toBe(true)
+  const list = await request.get(`${API}/uc/favorites`, { headers: { 'access-auth-token': ticket.token } })
+  expect(list.ok()).toBe(true)
+  expect((await list.json()) as { markets: string[] }).toEqual({ markets: ['BTC/USDT', 'ETH/USDT'] })
+  const trimmed = await authed(request, ticket.token, '/uc/favorites', { markets: ['BTC/USDT'] }, 'PUT')
+  expect(trimmed.ok()).toBe(true)
+  const after = await request.get(`${API}/uc/favorites`, { headers: { 'access-auth-token': ticket.token } })
+  expect((await after.json()) as { markets: string[] }).toEqual({ markets: ['BTC/USDT'] })
+  const anonymous = await request.get(`${API}/uc/favorites`)
+  expect(anonymous.status()).toBe(401)
 })
 
 test('sensitive matrix: password change revokes sessions, totp unbind needs a live code', async ({

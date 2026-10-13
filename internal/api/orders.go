@@ -95,29 +95,10 @@ func newOrderAPI(pool *pgxpool.Pool, env *APIEnv, ob *outbox.Outbox, log *slog.L
 // execution — a placement the engine refuses surfaces as
 // cancel.rejected on the member's channel, not as an error here.
 func (a *orderAPI) RegisterOrders(mux *http.ServeMux) {
-	mux.HandleFunc("POST /api/uc/orders", a.withSession(a.handlePlace))
-	mux.HandleFunc("GET /api/uc/orders/current", a.withSession(a.handleCurrent))
-	mux.HandleFunc("GET /api/uc/orders/history", a.withSession(a.handleHistory))
-	mux.HandleFunc("POST /api/uc/orders/{id}/cancel", a.withSession(a.handleCancel))
-}
-
-// withSession is the member-only wrapper, the same contract as
-// memberAPI's (kept local so the tickets land independently; collapse
-// at merge if there are two by then).
-func (a *orderAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("access-auth-token")
-		if token == "" {
-			WriteError(w, http.StatusUnauthorized, "Sign in to continue.")
-			return
-		}
-		s, err := resolveSession(r.Context(), a.pool, token, a.env.SessionTTL)
-		if err != nil {
-			WriteError(w, http.StatusUnauthorized, "Your session has expired. Sign in again.")
-			return
-		}
-		next(w, r, s)
-	}
+	mux.HandleFunc("POST /api/uc/orders", withMemberSession(a.pool, a.env, a.handlePlace))
+	mux.HandleFunc("GET /api/uc/orders/current", withMemberSession(a.pool, a.env, a.handleCurrent))
+	mux.HandleFunc("GET /api/uc/orders/history", withMemberSession(a.pool, a.env, a.handleHistory))
+	mux.HandleFunc("POST /api/uc/orders/{id}/cancel", withMemberSession(a.pool, a.env, a.handleCancel))
 }
 
 // ---- place ----

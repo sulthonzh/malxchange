@@ -43,23 +43,29 @@ func (a *memberAPI) RegisterMember(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/uc/sessions/revoke-all", a.withSession(a.handleRevokeAll))
 }
 
-// withSession wraps a member-only handler: it resolves the
+// withMemberSession wraps a member-only handler: it resolves the
 // access-auth-token session and rejects anonymous, expired, and revoked
-// requests with 401.
-func (a *memberAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
+// requests with 401. The one implementation behind every surface's
+// gate (members, channels, orders, funds, favorites).
+func withMemberSession(pool *pgxpool.Pool, env *APIEnv, next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("access-auth-token")
 		if token == "" {
 			WriteError(w, http.StatusUnauthorized, "Sign in to continue.")
 			return
 		}
-		s, err := resolveSession(r.Context(), a.pool, token, a.env.SessionTTL)
+		s, err := resolveSession(r.Context(), pool, token, env.SessionTTL)
 		if err != nil {
 			WriteError(w, http.StatusUnauthorized, "Your session has expired. Sign in again.")
 			return
 		}
 		next(w, r, s)
 	}
+}
+
+// withSession is memberAPI's binding of the shared member gate.
+func (a *memberAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
+	return withMemberSession(a.pool, a.env, next)
 }
 
 // ---- request/response payloads ----

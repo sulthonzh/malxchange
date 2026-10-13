@@ -89,19 +89,21 @@ export interface PlaceOrderResponse {
   orderId: string
 }
 
-/** Pair from the route (btcusdt) to the api Market symbol (BTC/USDT). */
-export function marketSymbol(base: string, quote: string): string {
+/** The api Market name (BTC/USDT) from a base and quote Coin. */
+export function marketName(base: string, quote: string): string {
   return `${base.toUpperCase()}/${quote.toUpperCase()}`
 }
 
 /**
- * The legacy pair vocabulary was `BTCUSDT` in the route; the port takes
- * `base_quote` (see guide) and resolves the symbol against the market
- * list, so a renamed or delisted pair degrades to the first listed
- * Market instead of a dead page.
+ * Resolves the /exchange/:pair route value against the market list.
+ * The route keeps the legacy URL vocabulary (`base_quote`, and the
+ * squashed `basequote` form legacy links used) — GLOSSARY's "pair"
+ * ban covers new identifiers, not this pinned wire path — and a
+ * renamed or delisted Market degrades to the first listed one instead
+ * of a dead page.
  */
-export function symbolFromRoutePair(pair: string, markets: MarketInfo[]): MarketInfo | undefined {
-  const normalized = pair.trim().toLowerCase()
+export function marketFromRouteSlug(slug: string, markets: MarketInfo[]): MarketInfo | undefined {
+  const normalized = slug.trim().toLowerCase()
   const bySlug = markets.find(
     (m) => `${m.baseCoin}_${m.quoteCoin}`.toLowerCase() === normalized,
   )
@@ -112,8 +114,8 @@ export function symbolFromRoutePair(pair: string, markets: MarketInfo[]): Market
   return squashed
 }
 
-/** The pair slug a Market renders as in /exchange/:pair routes. */
-export function routePairSlug(market: MarketInfo): string {
+/** The route value a Market renders as in /exchange/:pair URLs. */
+export function marketRouteSlug(market: MarketInfo): string {
   return `${market.baseCoin}_${market.quoteCoin}`.toLowerCase()
 }
 

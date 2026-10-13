@@ -37,8 +37,9 @@ function setup() {
     onResync: () => {
       resyncs += 1
     },
-    createSocket: (url: string) => {
-      expect(url).toContain('token=tok')
+    createSocket: (url: string, protocols: string[]) => {
+      expect(url).toBe('wss://example.test/ws')
+      expect(protocols).toEqual(['access-auth-token', 'tok'])
       const fake = fakeSocket()
       sockets.push(fake)
       return fake

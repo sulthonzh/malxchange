@@ -20,6 +20,7 @@ func Run(ctx context.Context, d service.Deps) error {
 	member.RegisterMember(d.Public)
 	member.RegisterSensitive(d.Public)
 	member.RegisterSensitiveAdmin(d.Internal)
+	member.RegisterFavorites(d.Public)
 
 	channels := &channelAPI{pool: d.Pool, env: env, log: d.Log}
 	channels.RegisterChannels(d.Public)

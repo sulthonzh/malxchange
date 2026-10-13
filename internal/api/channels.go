@@ -137,19 +137,10 @@ func (a *channelAPI) RegisterChannelAdmin(mux *http.ServeMux) {
 	mux.HandleFunc("POST /channels/{name}/deactivate", a.handleDeactivateChannel)
 }
 
-// writeAdminErr answers the internal RPC error shape {"error": "…"} —
-// the envelope wallet/market internal RPCs use, not the member-facing
-// one.
-func writeAdminErr(w http.ResponseWriter, status int, err error) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
-}
-
 func (a *channelAPI) handleListChannels(w http.ResponseWriter, r *http.Request) {
 	states, err := listChannelStates(r.Context(), a.pool)
 	if err != nil {
-		writeAdminErr(w, http.StatusInternalServerError, err)
+		writeInternalErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, states)
@@ -161,7 +152,7 @@ func (a *channelAPI) handleActivateChannel(w http.ResponseWriter, r *http.Reques
 		Credentials json.RawMessage `json:"credentials"`
 	}
 	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&req); err != nil {
-		writeAdminErr(w, http.StatusBadRequest, errors.New("activate needs a JSON body with credentials"))
+		writeInternalErr(w, http.StatusBadRequest, "activate needs a JSON body with credentials")
 		return
 	}
 	// Refuse activation unless the credentials parse for this driver.
@@ -170,15 +161,11 @@ func (a *channelAPI) handleActivateChannel(w http.ResponseWriter, r *http.Reques
 		if errors.Is(err, errUnknownChannel) {
 			status = http.StatusNotFound
 		}
-		writeAdminErr(w, status, err)
+		writeInternalErr(w, status, err.Error())
 		return
 	}
 	if err := setChannel(r.Context(), a.pool, name, true, req.Credentials); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, errUnknownChannel) {
-			status = http.StatusNotFound
-		}
-		writeAdminErr(w, status, err)
+		writeInternalErr(w, channelErrStatus(err), err.Error())
 		return
 	}
 	a.log.Info("code channel activated", "channel", name, "actor", r.Header.Get("X-Mal-Actor"))
@@ -188,11 +175,7 @@ func (a *channelAPI) handleActivateChannel(w http.ResponseWriter, r *http.Reques
 func (a *channelAPI) handleDeactivateChannel(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	if err := setChannel(r.Context(), a.pool, name, false, json.RawMessage(`{}`)); err != nil {
-		status := http.StatusInternalServerError
-		if errors.Is(err, errUnknownChannel) {
-			status = http.StatusNotFound
-		}
-		writeAdminErr(w, status, err)
+		writeInternalErr(w, channelErrStatus(err), err.Error())
 		return
 	}
 	a.log.Info("code channel deactivated", "channel", name, "actor", r.Header.Get("X-Mal-Actor"))
@@ -207,29 +190,19 @@ func (a *channelAPI) RegisterChannels(mux *http.ServeMux) {
 	// Telegram's servers call the webhook (set up out-of-band); the
 	// webhook secret is its auth.
 	mux.HandleFunc("POST /api/uc/telegram/webhook", a.handleTelegramWebhook)
-	mux.HandleFunc("POST /api/uc/channels/telegram/link", a.withSession(a.handleTelegramLink))
-	mux.HandleFunc("POST /api/uc/channels/telegram/code", a.withSession(a.handleTelegramCode))
-	mux.HandleFunc("POST /api/uc/channels/telegram/verify", a.withSession(a.handleTelegramVerify))
-	mux.HandleFunc("POST /api/uc/phone/code", a.withSession(a.handlePhoneCode))
+	mux.HandleFunc("POST /api/uc/channels/telegram/link", withMemberSession(a.pool, a.env, a.handleTelegramLink))
+	mux.HandleFunc("POST /api/uc/channels/telegram/code", withMemberSession(a.pool, a.env, a.handleTelegramCode))
+	mux.HandleFunc("POST /api/uc/channels/telegram/verify", withMemberSession(a.pool, a.env, a.handleTelegramVerify))
+	mux.HandleFunc("POST /api/uc/phone/code", withMemberSession(a.pool, a.env, a.handlePhoneCode))
 }
 
-// withSession is the channel routes' session gate — the same 401
-// contract as memberAPI.withSession, kept local so each registrar stays
-// self-contained.
-func (a *channelAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		token := r.Header.Get("access-auth-token")
-		if token == "" {
-			WriteError(w, http.StatusUnauthorized, "Sign in to continue.")
-			return
-		}
-		s, err := resolveSession(r.Context(), a.pool, token, a.env.SessionTTL)
-		if err != nil {
-			WriteError(w, http.StatusUnauthorized, "Your session has expired. Sign in again.")
-			return
-		}
-		next(w, r, s)
+// channelErrStatus maps the channel registry's errors onto admin-RPC
+// statuses: an unknown channel is a 404, everything else is our fault.
+func channelErrStatus(err error) int {
+	if errors.Is(err, errUnknownChannel) {
+		return http.StatusNotFound
 	}
+	return http.StatusInternalServerError
 }
 
 // telegramInactive refuses a member request while the Telegram channel

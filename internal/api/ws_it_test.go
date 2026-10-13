@@ -144,17 +144,18 @@ func newWSStack(t *testing.T, env *APIEnv) *wsStack {
 
 // ---- helpers ----
 
-// wsDial connects a client socket; token "" is anonymous. The query
-// parameter is the browser path (the WS API cannot set headers).
+// wsDial connects a client socket; token "" is anonymous. A token
+// rides the Sec-WebSocket-Protocol list — the browser path, since the
+// WS API cannot set handshake headers.
 func wsDial(t *testing.T, s *wsStack, token string) *websocket.Conn {
 	t.Helper()
-	q := url.Values{}
+	opts := &websocket.DialOptions{}
 	if token != "" {
-		q.Set("token", token)
+		opts.Subprotocols = []string{"access-auth-token", token}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	c, _, err := websocket.Dial(ctx, s.rest.URL+"/ws?"+q.Encode(), nil)
+	c, _, err := websocket.Dial(ctx, s.rest.URL+"/ws", opts)
 	if err != nil {
 		t.Fatalf("ws dial: %v", err)
 	}
@@ -341,7 +342,9 @@ func TestWSAnonymousPublicChannelsIT(t *testing.T) {
 	// silently downgraded to anonymous.
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	_, resp, err := websocket.Dial(ctx, s.rest.URL+"/ws?token=garbage", nil)
+	_, resp, err := websocket.Dial(ctx, s.rest.URL+"/ws", &websocket.DialOptions{
+		Subprotocols: []string{"access-auth-token", "garbage"},
+	})
 	if err == nil {
 		t.Fatal("dial with a dead token must fail")
 	}

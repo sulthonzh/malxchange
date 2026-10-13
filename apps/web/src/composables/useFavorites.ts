@@ -1,26 +1,20 @@
 // Favorites (spec #24, story 18): the Member watchlist behind the market
-// table's star column and the exchange page's Favorites tab.
-//
-// Seam — api-backed storage: the watchlist belongs on the api side, and
-// those endpoints land with the member-center ticket. Until then this
-// composable persists to localStorage only, so consumers work today and
-// stay unchanged by the swap: give `load`/`add`/`remove` their api
-// branches (useApi() calls against the member watchlist endpoints; the
-// legacy routes were /exchange/favor/{find,add,delete}) keyed on
-// useSession().loggedIn, keeping localStorage as the logged-out fallback.
+// table's star column and the exchange page's Favorites tab. Signed-in
+// members get the api-owned watchlist (GET/PUT /uc/favorites, full-list
+// sync); anonymous visitors keep localStorage, which also survives as
+// the pre-login view. The two stores never merge — signing in replaces
+// whatever the device had with the member's list, the same full-sync
+// contract the api exposes.
+import { watch } from 'vue'
+
 const FAVORITES_KEY = 'web.favorites'
 
 export function useFavorites() {
-  const symbols = useState<string[]>('favorites:symbols', () => [])
+  const markets = useState<string[]>('favorites:markets', () => [])
   const loaded = useState('favorites:loaded', () => false)
-
-  function load(): void {
-    if (loaded.value || !import.meta.client) {
-      return
-    }
-    symbols.value = readStored()
-    loaded.value = true
-  }
+  const syncing = useState('favorites:syncing', () => false)
+  const { token, loggedIn } = useSession()
+  const { apiFetch } = useApi()
 
   function readStored(): string[] {
     try {
@@ -40,35 +34,92 @@ export function useFavorites() {
   }
 
   function persist(): void {
-    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(symbols.value))
+    window.localStorage.setItem(FAVORITES_KEY, JSON.stringify(markets.value))
   }
 
-  function has(symbol: string): boolean {
-    return symbols.value.includes(symbol)
-  }
-
-  function add(symbol: string): void {
-    if (has(symbol)) {
+  async function load(): Promise<void> {
+    if (loaded.value || !import.meta.client) {
       return
     }
-    symbols.value = [...symbols.value, symbol]
-    persist()
+    loaded.value = true
+    if (!loggedIn.value) {
+      markets.value = readStored()
+      return
+    }
+    try {
+      const body = await apiFetch<{ markets: string[] }>('/uc/favorites')
+      markets.value = body.markets
+    } catch {
+      // The watchlist is decorative; an unreachable api keeps the
+      // device-local list rather than blanking the star column.
+      markets.value = readStored()
+    }
   }
 
-  function remove(symbol: string): void {
-    symbols.value = symbols.value.filter((item) => item !== symbol)
-    persist()
+  /** Pushes the whole list — the api contract is full-sync, not merge. */
+  async function sync(): Promise<void> {
+    if (!loggedIn.value || syncing.value) {
+      return
+    }
+    syncing.value = true
+    try {
+      await apiFetch('/uc/favorites', { method: 'PUT', body: { markets: markets.value } })
+    } catch {
+      // A failed sync keeps the local view; the next change retries.
+    } finally {
+      syncing.value = false
+    }
   }
 
-  /** Returns true when the symbol is a favorite after the toggle. */
-  function toggle(symbol: string): boolean {
-    if (has(symbol)) {
-      remove(symbol)
+  function has(market: string): boolean {
+    return markets.value.includes(market)
+  }
+
+  function add(market: string): void {
+    if (has(market)) {
+      return
+    }
+    markets.value = [...markets.value, market]
+    if (loggedIn.value) {
+      void sync()
+    } else {
+      persist()
+    }
+  }
+
+  function remove(market: string): void {
+    markets.value = markets.value.filter((item) => item !== market)
+    if (loggedIn.value) {
+      void sync()
+    } else {
+      persist()
+    }
+  }
+
+  /** Returns true when the market is a favorite after the toggle. */
+  function toggle(market: string): boolean {
+    if (has(market)) {
+      remove(market)
       return false
     }
-    add(symbol)
+    add(market)
     return true
   }
 
-  return { symbols, load, has, add, remove, toggle }
+  if (import.meta.client) {
+    // A session appearing mid-visit (login) adopts the member's list;
+    // the token arriving also flips apiFetch onto the authed header.
+    watch(token, (now, before) => {
+      if (now && !before) {
+        void loadFreshAfterLogin()
+      }
+    })
+  }
+
+  async function loadFreshAfterLogin(): Promise<void> {
+    loaded.value = false
+    await load()
+  }
+
+  return { markets, load, has, add, remove, toggle }
 }

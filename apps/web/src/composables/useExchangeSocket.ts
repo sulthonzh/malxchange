@@ -29,7 +29,7 @@ export interface ExchangeSocketOptions {
   token?: string
   onEnvelope: (envelope: SocketEnvelope) => void
   onResync: () => void
-  createSocket?: (url: string) => SocketLike
+  createSocket?: (url: string, protocols: string[]) => SocketLike
   schedule?: (fn: () => void, ms: number) => unknown
   clearSchedule?: (handle: unknown) => void
 }
@@ -46,8 +46,14 @@ const BACKOFF_BASE_MS = 1000
 const BACKOFF_MAX_MS = 30000
 
 export function createExchangeSocket(options: ExchangeSocketOptions): ExchangeSocket {
+  // A signed-in socket carries the session token as a two-element
+  // Sec-WebSocket-Protocol list: browsers cannot set handshake
+  // headers, and the subprotocol keeps the token out of URLs, where
+  // it would ride logs and proxies. The factory seam receives the
+  // protocols so tests can assert them.
+  const protocols = options.token ? ['access-auth-token', options.token] : []
   const createSocket =
-    options.createSocket ?? ((url: string) => new WebSocket(url) as unknown as SocketLike)
+    options.createSocket ?? ((url: string, protocols: string[]) => new WebSocket(url, protocols) as unknown as SocketLike)
   const schedule = options.schedule ?? ((fn: () => void, ms: number) => setTimeout(fn, ms))
   const clearSchedule =
     options.clearSchedule ?? ((handle: unknown) => clearTimeout(handle as ReturnType<typeof setTimeout>))
@@ -59,15 +65,6 @@ export function createExchangeSocket(options: ExchangeSocketOptions): ExchangeSo
   let attempt = 0
   let pendingTimer: unknown = null
 
-  function connectUrl(): string {
-    // The token rides the query string because browsers cannot set
-    // headers on a WebSocket handshake.
-    if (!options.token) {
-      return options.url
-    }
-    const sep = options.url.includes('?') ? '&' : '?'
-    return `${options.url}${sep}token=${encodeURIComponent(options.token)}`
-  }
 
   function send(op: 'subscribe' | 'unsubscribe', channel: string): void {
     socket?.send(JSON.stringify({ op, channel }))
@@ -77,7 +74,7 @@ export function createExchangeSocket(options: ExchangeSocketOptions): ExchangeSo
     if (disposed || socket !== null) {
       return
     }
-    const current = createSocket(connectUrl())
+    const current = createSocket(options.url, protocols)
     socket = current
     current.onopen = () => {
       if (socket !== current) {

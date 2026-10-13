@@ -87,9 +87,12 @@ import { ApiError } from '~/composables/useApi'
 import { confirmPasswordMatches, validateEmail } from '~/utils/authValidation'
 
 // Ported from the legacy FindPwd page: email → verification code → new
-// password. The reset flow revokes every active session (ADR-0006
-// sensitive-flow matrix), so the page ends on that notice instead of a
-// silent jump to the trading page. Every request goes through the
+// password. The filename and route keep the legacy URL /findPwd (the
+// front's link vocabulary); GLOSSARY's naming bans apply to new
+// identifiers, not this pinned path. The reset flow revokes every
+// active session (ADR-0006 sensitive-flow matrix), so the page ends on
+// that notice instead of a silent jump to the trading page. Every
+// request goes through the
 // useForgotPassword seam — see its header for the routes ticket #39 is
 // expected to add.
 const { requestCode, resetPassword } = useForgotPassword()

@@ -49,7 +49,7 @@ onMounted(() => {
     } catch {
       tickers = {}
     }
-    rows.value = useState<string[]>('favorites:symbols').value.map((market) => {
+    rows.value = useState<string[]>('favorites:markets').value.map((market) => {
       const [base = '', quote = ''] = market.split('/')
       return {
         market,

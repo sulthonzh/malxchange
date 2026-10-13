@@ -247,10 +247,10 @@
 <script setup lang="ts">
 import {
   KLINE_INTERVALS,
-  marketSymbol,
+  marketName,
   orderErrorMessage,
-  routePairSlug,
-  symbolFromRoutePair,
+  marketRouteSlug,
+  marketFromRouteSlug,
   type BookLevel,
   type Depth,
   type KlineBar,
@@ -397,7 +397,7 @@ function toggleFavorite(market: string): void {
 }
 
 function selectMarket(row: MarketInfo): void {
-  void navigateTo(`/exchange/${routePairSlug(row)}`)
+  void navigateTo(`/exchange/${marketRouteSlug(row)}`)
 }
 
 function fillFromBook(price: string): void {
@@ -598,7 +598,7 @@ async function loadInitial(): Promise<void> {
   }
   const pair = Array.isArray(route.params.pair) ? route.params.pair[0] : route.params.pair
   const resolved =
-    (typeof pair === 'string' && symbolFromRoutePair(pair, markets.value)) ?? markets.value[0] ?? null
+    (typeof pair === 'string' && marketFromRouteSlug(pair, markets.value)) ?? markets.value[0] ?? null
   if (!resolved) {
     fatalError.value = 'No Markets are listed yet.'
     return

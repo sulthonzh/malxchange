@@ -144,6 +144,10 @@ services:
     environment:
       <<: *service-env
       MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_API}
+      # market-data proxy upstream (market's internal REST surface) and
+      # its bounded per-request budget (down/slow → 503)
+      MAL_API_MARKET_URL: ${MAL_API_MARKET_URL:-http://market:8080/internal}
+      MAL_API_MARKET_TIMEOUT: ${MAL_API_MARKET_TIMEOUT:-5s}
 
   exchange:
     <<: *service

@@ -31,38 +31,42 @@ type RPC struct {
 	WatchFor func(ctx context.Context, coin string) (*keys.Watch, error)
 }
 
-// RegisterRPC mounts every route on the service's internal mux.
+// RegisterRPC mounts every route on the service's internal mux. The
+// boot harness serves that mux under /internal/ with the prefix
+// stripped (internal/service), so patterns are prefix-free — like
+// market's and exchange's registrations — and serve at
+// /internal/freeze, /internal/release, /internal/accounts/{member}, …
 func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	// member seams (api service)
-	mux.HandleFunc("POST /internal/freeze", r.freeze)
-	mux.HandleFunc("POST /internal/release", r.release)
-	mux.HandleFunc("GET /internal/accounts/{member}", r.accounts)
-	mux.HandleFunc("POST /internal/deposit-addresses", r.depositAddress)
-	mux.HandleFunc("GET /internal/deposits", r.deposits)
-	mux.HandleFunc("POST /internal/withdrawals", r.withdrawalRequest)
-	mux.HandleFunc("GET /internal/journal/{member}", r.journalEntries)
+	mux.HandleFunc("POST /freeze", r.freeze)
+	mux.HandleFunc("POST /release", r.release)
+	mux.HandleFunc("GET /accounts/{member}", r.accounts)
+	mux.HandleFunc("POST /deposit-addresses", r.depositAddress)
+	mux.HandleFunc("GET /deposits", r.deposits)
+	mux.HandleFunc("POST /withdrawals", r.withdrawalRequest)
+	mux.HandleFunc("GET /journal/{member}", r.journalEntries)
 
 	// admin seams (admin-api front; it enforces permission + step-up)
-	mux.HandleFunc("GET /internal/withdrawals", r.listWithdrawals)
-	mux.HandleFunc("POST /internal/withdrawals/{id}/approve", r.withdrawalApprove)
-	mux.HandleFunc("POST /internal/withdrawals/{id}/reject", r.withdrawalReject)
-	mux.HandleFunc("POST /internal/withdrawals/{id}/retry", r.withdrawalRetry)
-	mux.HandleFunc("POST /internal/withdrawals/{id}/refund", r.withdrawalRefund)
-	mux.HandleFunc("GET /internal/sweeps", r.listSweeps)
-	mux.HandleFunc("POST /internal/sweeps/{id}/retry", r.sweepRetry)
-	mux.HandleFunc("GET /internal/coins", r.listCoins)
-	mux.HandleFunc("GET /internal/coins/{name}", r.getCoin)
-	mux.HandleFunc("PUT /internal/coins/{name}", r.putCoin)
-	mux.HandleFunc("POST /internal/coins/{name}/sweep-pause", r.sweepPause)
-	mux.HandleFunc("GET /internal/hot-transfers", r.listHotTransfers)
-	mux.HandleFunc("POST /internal/hot-transfers", r.hotTransfer)
-	mux.HandleFunc("GET /internal/cold-transfers", r.listColdTransfers)
-	mux.HandleFunc("POST /internal/cold-transfers", r.coldTransfer)
-	mux.HandleFunc("POST /internal/adjustments", r.adjustment)
-	mux.HandleFunc("GET /internal/incidents", r.listIncidents)
-	mux.HandleFunc("POST /internal/incidents/{id}/resolve", r.resolveIncident)
-	mux.HandleFunc("GET /internal/ops/summary", r.opsSummary)
-	mux.HandleFunc("GET /internal/reconcile", r.reconcile)
+	mux.HandleFunc("GET /withdrawals", r.listWithdrawals)
+	mux.HandleFunc("POST /withdrawals/{id}/approve", r.withdrawalApprove)
+	mux.HandleFunc("POST /withdrawals/{id}/reject", r.withdrawalReject)
+	mux.HandleFunc("POST /withdrawals/{id}/retry", r.withdrawalRetry)
+	mux.HandleFunc("POST /withdrawals/{id}/refund", r.withdrawalRefund)
+	mux.HandleFunc("GET /sweeps", r.listSweeps)
+	mux.HandleFunc("POST /sweeps/{id}/retry", r.sweepRetry)
+	mux.HandleFunc("GET /coins", r.listCoins)
+	mux.HandleFunc("GET /coins/{name}", r.getCoin)
+	mux.HandleFunc("PUT /coins/{name}", r.putCoin)
+	mux.HandleFunc("POST /coins/{name}/sweep-pause", r.sweepPause)
+	mux.HandleFunc("GET /hot-transfers", r.listHotTransfers)
+	mux.HandleFunc("POST /hot-transfers", r.hotTransfer)
+	mux.HandleFunc("GET /cold-transfers", r.listColdTransfers)
+	mux.HandleFunc("POST /cold-transfers", r.coldTransfer)
+	mux.HandleFunc("POST /adjustments", r.adjustment)
+	mux.HandleFunc("GET /incidents", r.listIncidents)
+	mux.HandleFunc("POST /incidents/{id}/resolve", r.resolveIncident)
+	mux.HandleFunc("GET /ops/summary", r.opsSummary)
+	mux.HandleFunc("GET /reconcile", r.reconcile)
 }
 
 func writeErr(w http.ResponseWriter, err error) {

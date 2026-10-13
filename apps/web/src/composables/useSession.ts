@@ -1,5 +1,15 @@
 export interface MemberSummary {
+  id: string
   email: string
+  status: string
+  createdAt: string
+}
+
+// What POST /uc/register and POST /uc/login answer: the opaque session
+// token plus the Member the session belongs to.
+export interface AuthTicket {
+  token: string
+  member: MemberSummary
 }
 
 // The Member session (ADR-0006): an opaque per-device session token
@@ -29,9 +39,10 @@ export function useSession() {
     member.value = summary
   }
 
-  // Seam: once the api's logout endpoint exists (login ticket), call it
-  // here before clearing the client state; clearing first keeps the
-  // browser signed out even if that call fails.
+  // clearSession only drops the client state. Revoking the session
+  // server-side (POST /uc/logout) is the sign-in UI's job before it
+  // calls this — useApi cannot live in here without a useApi ↔
+  // useSession cycle.
   function clearSession(): void {
     token.value = null
     member.value = null

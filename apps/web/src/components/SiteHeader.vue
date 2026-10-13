@@ -80,9 +80,17 @@ const navItems = [
 ] as const
 
 const session = useSession()
+const { apiFetch } = useApi()
 const drawerOpen = ref(false)
 
-function logout(): void {
+// Revoking the session server-side first, then dropping the client
+// state: a failed revoke still leaves the browser signed out.
+async function logout(): Promise<void> {
+  try {
+    await apiFetch('/uc/logout', { method: 'POST' })
+  } catch {
+    // The session may already be expired or revoked — clear regardless.
+  }
   session.clearSession()
 }
 </script>

@@ -8,8 +8,9 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    options?: { cause?: unknown },
   ) {
-    super(message)
+    super(message, options)
     this.name = 'ApiError'
   }
 }

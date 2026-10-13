@@ -67,6 +67,9 @@ func Run(ctx context.Context, d service.Deps) error {
 	case <-ctx.Done():
 		return nil
 	case err := <-errCh:
+		// Fatal by contract: this log is the only trace of why the
+		// service is going down (boot defers close the pool next).
+		d.Log.Error("wallet: worker failed — shutting down; restart + idempotent redelivery is the recovery", "err", err)
 		return err
 	}
 }

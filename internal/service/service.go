@@ -82,6 +82,13 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 		return err
 	}
 	defer pool.Close()
+	// Derive a cancellable ctx so shutdown unwinds in working order:
+	// this defer runs before the pool close above (LIFO), waking
+	// workers parked on ctx — the outbox relay's LISTEN holds an
+	// acquired conn in WaitForNotification — so pool.Close completes
+	// instead of deadlocking the process into a "closed pool" zombie.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if err := pgmig.Run(cfg.PG.URL(), migrations.FS, service); err != nil {
 		return err
 	}
@@ -183,7 +190,7 @@ func ensureTopicsRetry(ctx context.Context, producer *kgo.Client, service string
 	}
 }
 
-// healthcheckSelf probes http://127.0.0.1<addr>/healthz — the compose
+// healthcheckSelf probes http://127.0.0.1<addr>/readyz — the compose
 // healthcheck runs the same binary with -healthcheck (distroless images
 // carry no curl/wget).
 func healthcheckSelf() int {
@@ -195,7 +202,7 @@ func healthcheckSelf() int {
 		addr = addr[:i]
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get("http://127.0.0.1" + addr + "/healthz")
+	resp, err := client.Get("http://127.0.0.1" + addr + "/readyz")
 	if err != nil {
 		return 1
 	}

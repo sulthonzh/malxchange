@@ -5,6 +5,7 @@
 # published port; tunnel in with SSH when you need it).
 
 https://{$MAL_DOMAIN} {
+	tls internal
 	encode zstd gzip
 
 	# member REST API (issue #24 defines the public paths)
@@ -22,6 +23,7 @@ https://{$MAL_DOMAIN} {
 }
 
 https://{$MAL_ADMIN_DOMAIN} {
+	tls internal
 	encode zstd gzip
 
 	# admin app, SSR, REST-only (container lands with issue #25)

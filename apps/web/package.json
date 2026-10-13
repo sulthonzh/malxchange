@@ -6,7 +6,8 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "preview": "nuxt preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@element-plus/icons-vue": "2.3.2",
@@ -17,6 +18,7 @@
   },
   "devDependencies": {
     "@element-plus/nuxt": "1.1.5",
+    "@playwright/test": "^1.64.0",
     "@vitejs/plugin-vue": "6.0.10",
     "@vue/test-utils": "2.5.1",
     "happy-dom": "21.0.1",

@@ -23,12 +23,18 @@ interface FetchOptions {
 export function useApi() {
   const config = useRuntimeConfig()
   const { token } = useSession()
-  const apiBaseUrl = config.public.apiBaseUrl
+  // SSR runs in the container network; the browser's 127.0.0.1 base is
+  // the app itself there. Prefer the server-side override when present.
+  const apiBaseUrl = import.meta.server
+    ? (config.apiBaseUrl || config.public.apiBaseUrl)
+    : config.public.apiBaseUrl
 
   async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
     if (typeof apiBaseUrl !== 'string' || apiBaseUrl === '') {
       throw new ApiError(
-        'The api host is not configured. Set NUXT_PUBLIC_API_BASE_URL and restart the app.',
+        import.meta.server
+          ? 'The api host is not configured. Set NUXT_API_BASE_URL and restart the app.'
+          : 'The api host is not configured. Set NUXT_PUBLIC_API_BASE_URL and restart the app.',
         0,
       )
     }

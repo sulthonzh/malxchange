@@ -43,11 +43,20 @@ func (m *smtpMailer) Send(_ context.Context, to, subject, body string) error {
 		"",
 		body,
 	}, "\r\n")
-	var auth smtp.Auth
-	if m.env.SMTPUser != "" {
-		auth = smtp.PlainAuth("", m.env.SMTPUser, m.env.SMTPPass, m.env.SMTPHost)
+	// net/smtp authenticates whenever the server advertises AUTH, and
+	// smtp.PlainAuth refuses to send credentials over a cleartext
+	// connection — so a relay that advertises AUTH but not STARTTLS
+	// (the test mail sink) fails the authenticated attempt. Fall back
+	// to an unauthenticated delivery; a relay that truly requires auth
+	// rejects that too, and SendMail reports it.
+	if m.env.SMTPUser == "" {
+		return smtp.SendMail(addr, nil, m.env.SMTPFrom, []string{to}, []byte(msg))
 	}
-	return smtp.SendMail(addr, auth, m.env.SMTPFrom, []string{to}, []byte(msg))
+	auth := smtp.PlainAuth("", m.env.SMTPUser, m.env.SMTPPass, m.env.SMTPHost)
+	if err := smtp.SendMail(addr, auth, m.env.SMTPFrom, []string{to}, []byte(msg)); err == nil {
+		return nil
+	}
+	return smtp.SendMail(addr, nil, m.env.SMTPFrom, []string{to}, []byte(msg))
 }
 
 type discardMailer struct{ log *slog.Logger }

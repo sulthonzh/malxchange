@@ -76,3 +76,63 @@ services:
     command: ["--addr", ":50051", "--mine-interval", "1s"]
     ports:
       - "127.0.0.1:50051:50051"
+
+  # Test key ceremony (one-shot, cmd/devkeys): registers the fixed test
+  # mnemonic's watch-only xpubs on the Coins so deposit-address
+  # derivation works. Runs after the wallet has migrated the coins
+  # table; idempotent at every boot.
+  wallet-keys:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+      args: { SERVICE: devkeys }
+    image: malxchange/devkeys:latest
+    profiles: ["test"]
+    environment:
+      MAL_PG_HOST: postgres
+      MAL_PG_USER: wallet
+      MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_WALLET}
+      MAL_PG_DATABASE: malxchange
+      MAL_PG_SCHEMA: wallet
+    depends_on:
+      wallet:
+        condition: service_healthy
+    restart: "no"
+
+  # Member E2E (spec #24, issue #51): the web SSR container and the
+  # in-compose mail sink, plus the api's mail knobs and the
+  # E2E-specific host bindings Playwright reaches (:18080 api,
+  # :3000 web, :18025 mail UI). The web build context is the checked-in
+  # Nuxt app (apps/web/Dockerfile).
+  web:
+    build: { context: ../apps/web, dockerfile: Dockerfile }
+    image: malxchange/web:latest
+    restart: unless-stopped
+    profiles: ["e2e"]
+    environment:
+      # Browser origins point at the Caddy edge (published 443): the
+      # api and WebSocket are same-origin there, exactly as production.
+      # SSR runs inside the compose network and uses the service
+      # address directly.
+      NUXT_API_BASE_URL: http://api:8080/api
+      NUXT_PUBLIC_API_BASE_URL: https://exchange.example.com/api
+      NUXT_PUBLIC_WS_URL: wss://exchange.example.com/ws
+    ports:
+      - "127.0.0.1:3000:3000"
+  api:
+    environment:
+      MAL_API_SMTP_HOST: mailsink
+      MAL_API_SMTP_PORT: "1025"
+      MAL_API_SMTP_FROM: malxchange@localhost
+    profiles: ["test"]
+    ports:
+      - "127.0.0.1:18080:8080"
+  mailsink:
+    image: docker.io/axllent/mailpit:v1.21
+    profiles: ["test"]
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:18025:8025"
+      - "127.0.0.1:11025:1025"

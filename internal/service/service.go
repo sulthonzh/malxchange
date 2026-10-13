@@ -40,6 +40,11 @@ type Deps struct {
 	// Internal is mounted at /internal/ for service-to-service RPC and
 	// admin views (engine status etc.). Compose keeps the port off Caddy.
 	Internal *http.ServeMux
+	// Public is mounted at the listener root ("/"): the member surface
+	// Caddy proxies to (issue #24 — /api/* REST, /ws WebSocket). Health
+	// (/healthz, /readyz) stays its fallback, so a service that mounts
+	// nothing public keeps today's behavior.
+	Public *http.ServeMux
 }
 
 // Extra is service-specific boot logic; nil is valid (skeleton services).
@@ -77,6 +82,13 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 		return err
 	}
 	defer pool.Close()
+	// Derive a cancellable ctx so shutdown unwinds in working order:
+	// this defer runs before the pool close above (LIFO), waking
+	// workers parked on ctx — the outbox relay's LISTEN holds an
+	// acquired conn in WaitForNotification — so pool.Close completes
+	// instead of deadlocking the process into a "closed pool" zombie.
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	if err := pgmig.Run(cfg.PG.URL(), migrations.FS, service); err != nil {
 		return err
 	}
@@ -103,12 +115,19 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 	}()
 
 	root := http.NewServeMux()
-	root.Handle("/", health.Handler(map[string]health.Check{
+	checks := map[string]health.Check{
 		"postgres": pool.Ping,
 		"redpanda": func(c context.Context) error { return kafka.Ping(c, producer) },
-	}))
+	}
 	internalMux := http.NewServeMux()
 	root.Handle("/internal/", http.StripPrefix("/internal", internalMux))
+	// Public service surface (issue #24): the root mux hands everything
+	// that is not /internal/ to the public mux, whose own "/" fallback is
+	// still health — so member routes (api's /api/*, /ws) and the health
+	// endpoints share the listener unchanged for the other services.
+	publicMux := http.NewServeMux()
+	publicMux.Handle("/", health.Handler(checks))
+	root.Handle("/", publicMux)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -118,7 +137,7 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- srv.ListenAndServe() }()
 
-	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log, Internal: internalMux}
+	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log, Internal: internalMux, Public: publicMux}
 	if extra != nil {
 		if err := extra(ctx, d); err != nil {
 			return fmt.Errorf("extra: %w", err)
@@ -171,7 +190,7 @@ func ensureTopicsRetry(ctx context.Context, producer *kgo.Client, service string
 	}
 }
 
-// healthcheckSelf probes http://127.0.0.1<addr>/healthz — the compose
+// healthcheckSelf probes http://127.0.0.1<addr>/readyz — the compose
 // healthcheck runs the same binary with -healthcheck (distroless images
 // carry no curl/wget).
 func healthcheckSelf() int {
@@ -183,7 +202,7 @@ func healthcheckSelf() int {
 		addr = addr[:i]
 	}
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get("http://127.0.0.1" + addr + "/healthz")
+	resp, err := client.Get("http://127.0.0.1" + addr + "/readyz")
 	if err != nil {
 		return 1
 	}

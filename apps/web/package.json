@@ -1,0 +1,30 @@
+{
+  "name": "@malxchange/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "test": "vitest run",
+    "e2e": "playwright test"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
+    "big.js": "7.0.1",
+    "dompurify": "3.4.17",
+    "element-plus": "2.14.7",
+    "lightweight-charts": "4.2.3"
+  },
+  "devDependencies": {
+    "@element-plus/nuxt": "1.1.5",
+    "@playwright/test": "^1.64.0",
+    "@vitejs/plugin-vue": "6.0.10",
+    "@vue/test-utils": "2.5.1",
+    "happy-dom": "21.0.1",
+    "jsdom": "29.1.1",
+    "nuxt": "3.21.11",
+    "sass": "1.105.1",
+    "vitest": "3.2.7"
+  }
+}

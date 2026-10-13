@@ -16,6 +16,7 @@ import (
 	"context"
 	"log/slog"
 	"math/rand"
+	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -165,11 +166,12 @@ func (r *Relay) reclaim(ctx context.Context) error {
 }
 
 type claimed struct {
-	ID       string `db:"id"`
-	Topic    string `db:"topic"`
-	Key      string `db:"key"`
-	Payload  []byte `db:"payload"`
-	Attempts int    `db:"attempts"`
+	ID        string    `db:"id"`
+	Topic     string    `db:"topic"`
+	Key       string    `db:"key"`
+	Payload   []byte    `db:"payload"`
+	Attempts  int       `db:"attempts"`
+	CreatedAt time.Time `db:"created_at"`
 }
 
 func (r *Relay) drainBatch(ctx context.Context) (int, error) {
@@ -182,11 +184,18 @@ func (r *Relay) drainBatch(ctx context.Context) (int, error) {
 		     LIMIT $1
 		     FOR UPDATE SKIP LOCKED
 		 )
-		 RETURNING id, topic, key, payload, attempts`, r.BatchSize)
+		 RETURNING id, topic, key, payload, attempts, created_at`, r.BatchSize)
 	if err != nil {
 		return 0, err
 	}
 	batch, err := pgx.CollectRows(rows, pgx.RowToStructByPos[claimed])
+	if err != nil {
+		return 0, err
+	}
+	// UPDATE ... RETURNING does not promise the subquery's ORDER BY, but
+	// same-key events must publish in enqueue order (consumers rely on
+	// per-key sequencing), so restore it before publishing.
+	sort.Slice(batch, func(i, j int) bool { return batch[i].CreatedAt.Before(batch[j].CreatedAt) })
 	if err != nil {
 		return 0, err
 	}

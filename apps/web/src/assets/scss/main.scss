@@ -1,0 +1,85 @@
+// Ported visual system from the legacy front (05_Web_Front). The legacy
+// skin switcher dies — night was the default and is now pinned (ADR-0003
+// look port). Palette per the legacy App.vue / Exchange.vue styles:
+// body #0b1520, panels #192330, panel headers/borders #27313e, text #fff,
+// secondary #828ea1, muted #61688a, accent gold #f0a70a, buy green
+// #00b275, sell red #f15057.
+//
+// Values live as CSS custom properties so every component style block
+// reads the same tokens without a build-time import chain.
+
+:root {
+  --body-bg: #0b1520;
+  --panel-bg: #192330;
+  --panel-header-bg: #27313e;
+  --panel-border: #27313e;
+  --site-header-bg: #172636;
+  --home-section-bg: #141e2c;
+  --home-tabs-bg: #1e2834;
+  --home-tabs-hover-bg: #222b38;
+  --text: #fff;
+  --text-secondary: #828ea1;
+  --text-muted: #61688a;
+  --accent: #f0a70a;
+  --accent-border: #ffa800;
+  --buy-green: #00b275;
+  --sell-red: #f15057;
+
+  // element-plus tables share the ported panel look (the legacy iView
+  // table overrides from App.vue, translated to element-plus variables).
+  --el-table-border-color: var(--panel-border);
+  --el-table-bg-color: transparent;
+  --el-table-tr-bg-color: transparent;
+  --el-table-header-bg-color: transparent;
+  --el-table-header-text-color: var(--text-secondary);
+  --el-table-text-color: var(--text);
+  --el-table-row-hover-bg-color: var(--home-tabs-bg);
+  --el-fill-color-blank: transparent;
+}
+
+html,
+body {
+  height: 100%;
+  font-size: 14px;
+  font-family: 'Helvetica Neue', Helvetica, Arial, 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  background: var(--body-bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--text);
+  text-decoration: none;
+
+  &:hover {
+    color: var(--accent);
+  }
+}
+
+// Ported slim scrollbar from App.vue.
+::-webkit-scrollbar {
+  width: 3px;
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #39557a;
+  border-radius: 25px;
+}
+
+// Ported sticky-footer layout from App.vue: content reserves the footer
+// height so short pages still pin the footer to the bottom.
+.page-view {
+  height: 100%;
+
+  .page-content {
+    min-height: 100%;
+    padding-bottom: 200px;
+  }
+}
+
+.site-footer {
+  width: 100%;
+  overflow: hidden;
+  margin-top: -200px;
+}

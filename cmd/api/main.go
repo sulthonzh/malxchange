@@ -1,7 +1,11 @@
-// Command api is the member surface: auth, REST, the member WebSocket,
-// and order submission (built out in issue #24; platform skeleton here).
+// Command api is the only public member surface: auth, the member REST
+// under /api/*, the single authenticated WebSocket at /ws, the
+// market-data proxy, and the order-submission path (spec #24).
 package main
 
-import "github.com/syaikhipin/malxchange/internal/service"
+import (
+	"github.com/syaikhipin/malxchange/internal/api"
+	"github.com/syaikhipin/malxchange/internal/service"
+)
 
-func main() { service.Main("api", nil) }
+func main() { service.Main("api", api.Run) }

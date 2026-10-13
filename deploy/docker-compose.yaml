@@ -144,6 +144,15 @@ services:
     environment:
       <<: *service-env
       MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_API}
+      MAL_API_SMTP_HOST: ${MAL_API_SMTP_HOST}
+      MAL_API_SMTP_PORT: ${MAL_API_SMTP_PORT:-25}
+      MAL_API_SMTP_USER: ${MAL_API_SMTP_USER}
+      MAL_API_SMTP_PASS: ${MAL_API_SMTP_PASS}
+      MAL_API_SMTP_FROM: ${MAL_API_SMTP_FROM:-malxchange@localhost}
+      MAL_API_CODE_TTL: ${MAL_API_CODE_TTL:-5m}
+      MAL_API_CODE_COOLDOWN: ${MAL_API_CODE_COOLDOWN:-30s}
+      MAL_API_LOCKOUT_WINDOW: ${MAL_API_LOCKOUT_WINDOW:-15m}
+      MAL_API_SESSION_TTL: ${MAL_API_SESSION_TTL:-168h}
 
   exchange:
     <<: *service

@@ -144,6 +144,17 @@ services:
     environment:
       <<: *service-env
       MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_API}
+      # market-data proxy upstream (market's internal REST surface) and
+      # its bounded per-request budget (down/slow → 503)
+      MAL_API_MARKET_BASE_URL: ${MAL_API_MARKET_BASE_URL:-http://market:8080/internal}
+      MAL_API_MARKET_TIMEOUT: ${MAL_API_MARKET_TIMEOUT:-5s}
+      # funds proxy upstream (wallet's internal RPC surface) and budget
+      MAL_API_WALLET_BASE_URL: ${MAL_API_WALLET_BASE_URL:-http://wallet:8080/internal}
+      MAL_API_WALLET_TIMEOUT: ${MAL_API_WALLET_TIMEOUT:-5s}
+      # order-path upstreams: exchange member-order RPC + market config
+      # cache window
+      MAL_API_EXCHANGE_BASE_URL: ${MAL_API_EXCHANGE_BASE_URL:-http://exchange:8080/internal}
+      MAL_API_MARKET_CACHE_TTL: ${MAL_API_MARKET_CACHE_TTL:-5s}
       MAL_API_SMTP_HOST: ${MAL_API_SMTP_HOST}
       MAL_API_SMTP_PORT: ${MAL_API_SMTP_PORT:-25}
       MAL_API_SMTP_USER: ${MAL_API_SMTP_USER}

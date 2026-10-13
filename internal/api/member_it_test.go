@@ -152,9 +152,18 @@ func newStack(t *testing.T) *itStack {
 		relay: relay, mailer: mailer, env: env, t: t}
 
 	root := http.NewServeMux()
+	internal := http.NewServeMux()
 	member := &memberAPI{pool: pool, env: env, mailer: mailer,
 		ob: outbox.New(pool), log: testLogger()}
 	member.RegisterMember(root)
+	member.RegisterSensitive(root)
+	member.RegisterSensitiveAdmin(internal)
+	channels := &channelAPI{pool: pool, env: env, log: testLogger()}
+	channels.RegisterChannels(root)
+	channels.RegisterChannelAdmin(internal)
+	// The boot-harness internal wiring (service.go): /internal/* strips
+	// the prefix, so the admin RPC lands at /internal/channels*.
+	root.Handle("/internal/", http.StripPrefix("/internal", internal))
 	s.rest = httptest.NewServer(root)
 	t.Cleanup(s.rest.Close)
 	return s

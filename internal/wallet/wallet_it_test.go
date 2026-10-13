@@ -9,6 +9,8 @@ package wallet
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -56,17 +58,41 @@ func newStack(t *testing.T) *itStack {
 	t.Helper()
 	ctx := context.Background()
 
+	// Unique throwaway DB per test binary: sibling tickets' IT suites run
+	// against the same dev Postgres, and a fixed name would let one
+	// worktree's DROP/recreate pull the floor out from under another's
+	// mid-test run.
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	dbName := "malxchange_itw_" + hex.EncodeToString(suffix)
+
 	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
 		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = admin.Exec(ctx, `DROP DATABASE IF EXISTS malxchange_itw WITH (FORCE)`)
-	_, _ = admin.Exec(ctx, `CREATE DATABASE malxchange_itw`)
+	if _, err := admin.Exec(ctx,
+		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
+		t.Fatal(err)
+	}
 	admin.Close()
+	t.Cleanup(func() {
+		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
+			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+		if err != nil {
+			return
+		}
+		defer admin.Close()
+		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
+	})
 
-	pool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/malxchange_itw?sslmode=disable&search_path=wallet",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
+	pool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=wallet",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +102,7 @@ func newStack(t *testing.T) *itStack {
 		Scheme:   "postgres",
 		User:     url.UserPassword(os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW),
 		Host:     itPGHost + ":5432",
-		Path:     "/malxchange_itw",
+		Path:     "/" + dbName,
 		RawQuery: "sslmode=disable&search_path=wallet",
 	}
 	if err := pgmig.Run(u.String(), migrations.FS, "wallet"); err != nil {

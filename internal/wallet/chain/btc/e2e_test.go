@@ -75,6 +75,39 @@ func generate(t *testing.T, r *RPC, n int) {
 	}
 }
 
+// segwitActivationHeight is where simnet segwit reaches ACTIVE. The
+// simnet deployment starts at genesis with 100-block windows and a 75%
+// threshold — STARTED at 100, LOCKED_IN at 200, ACTIVE at 300 — and
+// btcd's CPU miner signals, so mining to 300 always activates it.
+// Below it every witness tx is rejected rpc -26 (#36), and custody
+// mints native SegWit deposit addresses (segwitAddress), so this
+// suite's funding and spend txs always carry witness data.
+const segwitActivationHeight = 300
+
+// ensureSegwitActive mines until the tip passes simnet segwit
+// activation, then asserts it — so an under-height failure names the
+// precondition instead of surfacing as a broadcast rpc -26. Idempotent:
+// a chain already past activation (the long-lived dev one) skips
+// mining entirely.
+func ensureSegwitActive(t *testing.T, r *RPC) {
+	t.Helper()
+	ctx := context.Background()
+	h, err := r.Height(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h < segwitActivationHeight {
+		t.Logf("tip %d below segwit activation: mining %d blocks", h, segwitActivationHeight-h)
+		generate(t, r, int(segwitActivationHeight-h))
+		if h, err = r.Height(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if h < segwitActivationHeight {
+		t.Fatalf("chain height %d still below simnet segwit activation %d — witness txs (custody deposit addresses are native SegWit) would be rejected rpc -26", h, segwitActivationHeight)
+	}
+}
+
 // coinbaseUtxo mines enough maturity and returns the mature coinbase
 // output of the FIRST freshly mined block as a spendable Utxo.
 func coinbaseUtxo(t *testing.T, r *RPC, acct *keys.Account) (Utxo, int64) {
@@ -134,6 +167,10 @@ func runE2E(t *testing.T, family, url string) {
 	if d, err := r.Decimals(ctx, ""); err != nil || d != 8 {
 		t.Fatalf("decimals: %d %v", d, err)
 	}
+
+	// Custody's deposit addresses are native SegWit, so the first
+	// broadcast below needs segwit active (#36).
+	ensureSegwitActive(t, r)
 
 	cb, _ := coinbaseUtxo(t, r, acct)
 	depositAddr, err := acct.AddressAt(3)

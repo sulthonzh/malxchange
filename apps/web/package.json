@@ -1,0 +1,22 @@
+{
+  "name": "@malxchange/web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "2.3.2",
+    "big.js": "7.0.1",
+    "element-plus": "2.14.7"
+  },
+  "devDependencies": {
+    "@element-plus/nuxt": "1.1.5",
+    "nuxt": "3.21.11",
+    "sass": "1.105.1",
+    "vitest": "3.2.7"
+  }
+}

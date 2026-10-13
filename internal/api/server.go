@@ -21,8 +21,10 @@ func Run(ctx context.Context, d service.Deps) error {
 
 	RegisterContent(d.Public, LoadContentConfig())
 
+	newOrderAPI(d.Pool, env, d.Outbox, d.Log, LoadOrderConfig()).RegisterOrders(d.Public)
+
 	// Parallel-ticket registrars mount here as they land (market-data
-	// proxy, WebSocket hub, funds, orders).
+	// proxy, WebSocket hub, funds).
 
 	<-ctx.Done()
 	return nil

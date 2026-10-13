@@ -168,11 +168,12 @@ import { compareMoney } from '~/utils/money'
 // band, CNY conversions, and innovation tabs are cut (spec #24).
 
 // Paths under the api host (spec #24 keeps the api the only public
-// member surface; it proxies the market read surface). The api ticket
-// pins the final public paths — both live here so a repoint is one line.
+// member surface; it proxies the market read surface). The announcements
+// path is the pinned content route (content contract, ticket #45): a
+// paged document, of which the strip shows the first page.
 const MARKETS_PATH = '/market/markets'
 const TICKERS_PATH = '/market/tickers'
-const ANNOUNCEMENTS_PATH = '/uc/announcements'
+const ANNOUNCEMENTS_PATH = '/api/announcements?pageNo=1&pageSize=5'
 
 interface MarketInfo {
   market: string
@@ -196,9 +197,14 @@ interface Ticker {
 }
 
 interface Announcement {
-  id: number
+  id: string
   title: string
   createTime: string
+}
+
+interface AnnouncementPage {
+  content: Announcement[]
+  totalElements: number
 }
 
 // One row per Market: the static config joined with its rolling 24h
@@ -359,7 +365,8 @@ async function loadMarkets(): Promise<void> {
 
 async function loadAnnouncements(): Promise<void> {
   try {
-    announcements.value = await apiFetch<Announcement[]>(ANNOUNCEMENTS_PATH)
+    const page = await apiFetch<AnnouncementPage>(ANNOUNCEMENTS_PATH)
+    announcements.value = page.content
   } catch {
     // The strip stays hidden when announcements cannot be loaded.
   }

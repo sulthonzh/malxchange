@@ -11,13 +11,13 @@
           <li class="footer_title"><span>Exchange</span></li>
           <li><NuxtLink to="/exchange">Trade a Market</NuxtLink></li>
           <li><NuxtLink to="/help">How to place an order</NuxtLink></li>
-          <li><NuxtLink to="/helplist">Coin guides</NuxtLink></li>
+          <li><NuxtLink to="/help">Coin guides</NuxtLink></li>
         </ul>
         <ul>
           <li class="footer_title"><span>Content</span></li>
           <li><NuxtLink to="/notice">Announcements</NuxtLink></li>
           <li><NuxtLink to="/help">Help center</NuxtLink></li>
-          <li><NuxtLink to="/helplist">Frequently asked questions</NuxtLink></li>
+          <li><NuxtLink to="/help">Frequently asked questions</NuxtLink></li>
         </ul>
         <ul>
           <li class="footer_title"><span>Member</span></li>

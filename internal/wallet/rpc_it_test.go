@@ -81,8 +81,8 @@ func TestInternalRPCServesAtSingleInternalPath(t *testing.T) {
 		if a["coin"] != "USDT" {
 			continue
 		}
-		if a["frozen"] != "10.00" || a["available"] != "990.00" {
-			t.Fatalf("alice USDT = available %s frozen %s, want 990.00 / 10.00", a["available"], a["frozen"])
+		if a["frozen"] != "10.000020" || a["available"] != "989.999980" {
+			t.Fatalf("alice USDT = available %s frozen %s, want 989.999980 / 10.000020", a["available"], a["frozen"])
 		}
 		return
 	}

@@ -72,9 +72,9 @@ func proxyGet(t *testing.T, url string) (status int, contentType string, body st
 }
 
 // TestMarketProxyForwardsRequestLineVerbatim pins param passthrough
-// (ticket #43): the public /api prefix is the only thing the proxy
-// strips — method, path, and the raw query reach market's internal
-// surface untouched, unknown parameters included.
+// (ticket #43): the public /api/market prefix is the only thing the
+// proxy strips — method, path, and the raw query reach market's
+// internal surface untouched, unknown parameters included.
 func TestMarketProxyForwardsRequestLineVerbatim(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
@@ -87,16 +87,16 @@ func TestMarketProxyForwardsRequestLineVerbatim(t *testing.T) {
 	}))
 	t.Cleanup(up.Close)
 
-	srv := mountProxy(t, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 2 * time.Second})
+	srv := mountProxy(t, MarketProxyConfig{MarketBaseURL: up.URL + "/internal", Timeout: 2 * time.Second})
 
 	paths := []string{
-		"/api/markets",
-		"/api/trades/BTC/USDT?limit=7",
-		"/api/trades/BTC%2FUSDT?limit=1000&unknownParam=rides-along",
-		"/api/depth/BTC/USDT",
-		"/api/kline/ETH/USDT?interval=1h&limit=10",
-		"/api/ticker/BTC/USDT",
-		"/api/tickers",
+		"/api/market/markets",
+		"/api/market/trades/BTC/USDT?limit=7",
+		"/api/market/trades/BTC%2FUSDT?limit=1000&unknownParam=rides-along",
+		"/api/market/depth/BTC/USDT",
+		"/api/market/kline/ETH/USDT?interval=1h&limit=10",
+		"/api/market/ticker/BTC/USDT",
+		"/api/market/tickers",
 	}
 	for _, p := range paths {
 		if status, _, _ := proxyGet(t, srv.URL+p); status != http.StatusOK {
@@ -165,15 +165,15 @@ func TestMarketProxyPassesSuccessBodiesThroughVerbatim(t *testing.T) {
 		},
 	}
 	up := stubUpstream(t, answers)
-	srv := mountProxy(t, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 2 * time.Second})
+	srv := mountProxy(t, MarketProxyConfig{MarketBaseURL: up.URL + "/internal", Timeout: 2 * time.Second})
 
 	for _, publicPath := range []string{
-		"/api/markets",
-		"/api/trades/BTC/USDT",
-		"/api/depth/BTC/USDT",
-		"/api/kline/BTC/USDT?interval=1m",
-		"/api/ticker/BTC/USDT",
-		"/api/tickers",
+		"/api/market/markets",
+		"/api/market/trades/BTC/USDT",
+		"/api/market/depth/BTC/USDT",
+		"/api/market/kline/BTC/USDT?interval=1m",
+		"/api/market/ticker/BTC/USDT",
+		"/api/market/tickers",
 	} {
 		ans, ok := answers[internalPath(t, publicPath)]
 		if !ok {
@@ -207,21 +207,21 @@ func TestMarketProxyRewritesNamedErrorsToPublicEnvelope(t *testing.T) {
 	}{
 		{
 			name:         "unknown interval keeps its name",
-			path:         "/api/kline/BTC/USDT",
+			path:         "/api/market/kline/BTC/USDT",
 			status:       http.StatusBadRequest,
 			upstreamBody: `{"error":"unknown interval (must be one of 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w)"}` + "\n",
 			wantMessage:  "unknown interval (must be one of 1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w)",
 		},
 		{
 			name:         "bad limit keeps its name",
-			path:         "/api/trades/BTC/USDT?limit=0",
+			path:         "/api/market/trades/BTC/USDT?limit=0",
 			status:       http.StatusBadRequest,
 			upstreamBody: `{"error":"limit must be an integer between 1 and 1000"}` + "\n",
 			wantMessage:  "limit must be an integer between 1 and 1000",
 		},
 		{
 			name:         "unexpected upstream failure keeps its status",
-			path:         "/api/markets",
+			path:         "/api/market/markets",
 			status:       http.StatusInternalServerError,
 			upstreamBody: `{"error":"connection reset by peer"}` + "\n",
 			wantMessage:  "connection reset by peer",
@@ -233,7 +233,7 @@ func TestMarketProxyRewritesNamedErrorsToPublicEnvelope(t *testing.T) {
 				status: tc.status, body: tc.upstreamBody,
 			}}
 			up := stubUpstream(t, answers)
-			srv := mountProxy(t, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 2 * time.Second})
+			srv := mountProxy(t, MarketProxyConfig{MarketBaseURL: up.URL + "/internal", Timeout: 2 * time.Second})
 
 			status, contentType, body := proxyGet(t, srv.URL+tc.path)
 			if status != tc.status {
@@ -251,11 +251,11 @@ func TestMarketProxyRewritesNamedErrorsToPublicEnvelope(t *testing.T) {
 }
 
 // internalPath derives the fixture key — the upstream request URI,
-// /internal plus the public path minus /api — so the assertion and the
-// stub share one source.
+// /internal plus the public path minus /api/market — so the assertion
+// and the stub share one source.
 func internalPath(t *testing.T, public string) string {
 	t.Helper()
-	const prefix = "/api"
+	const prefix = "/api/market"
 	if len(public) < len(prefix) || public[:len(prefix)] != prefix {
 		t.Fatalf("public path %q lacks the %s prefix", public, prefix)
 	}
@@ -270,9 +270,9 @@ func TestMarketProxyDownstreamDownAnswers503(t *testing.T) {
 	deadURL := dead.URL
 	dead.Close() // the port is gone: every dial fails
 
-	srv := mountProxy(t, MarketProxyConfig{MarketURL: deadURL + "/internal", Timeout: 500 * time.Millisecond})
+	srv := mountProxy(t, MarketProxyConfig{MarketBaseURL: deadURL + "/internal", Timeout: 500 * time.Millisecond})
 
-	status, contentType, body := proxyGet(t, srv.URL+"/api/markets")
+	status, contentType, body := proxyGet(t, srv.URL+"/api/market/markets")
 	if status != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", status)
 	}
@@ -296,10 +296,10 @@ func TestMarketProxySlowDownstreamIsBoundedNotHung(t *testing.T) {
 	t.Cleanup(up.Close)                  // registered first → runs last:
 	t.Cleanup(func() { close(release) }) // Close waits for the handler, so release first
 
-	srv := mountProxy(t, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 60 * time.Millisecond})
+	srv := mountProxy(t, MarketProxyConfig{MarketBaseURL: up.URL + "/internal", Timeout: 60 * time.Millisecond})
 
 	start := time.Now()
-	status, _, body := proxyGet(t, srv.URL+"/api/tickers")
+	status, _, body := proxyGet(t, srv.URL+"/api/market/tickers")
 	elapsed := time.Since(start)
 	if status != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", status)
@@ -321,17 +321,17 @@ func TestMarketProxyDoesNotShadowSiblingRoutes(t *testing.T) {
 		"/internal/markets": {status: http.StatusOK, contentType: "application/json", body: "[]\n"},
 	})
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/uc/me", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"email":"member@example.com"}` + "\n"))
 	})
-	RegisterMarketProxy(mux, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 2 * time.Second})
+	RegisterMarketProxy(mux, MarketProxyConfig{MarketBaseURL: up.URL + "/internal", Timeout: 2 * time.Second})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
 
-	if status, _, body := proxyGet(t, srv.URL+"/api/me"); status != http.StatusOK ||
+	if status, _, body := proxyGet(t, srv.URL+"/api/uc/me"); status != http.StatusOK ||
 		body != `{"email":"member@example.com"}`+"\n" {
-		t.Errorf("sibling route /api/me: status = %d, body = %q", status, body)
+		t.Errorf("sibling route /api/uc/me: status = %d, body = %q", status, body)
 	}
 	if status, _, _ := proxyGet(t, srv.URL+"/api/nosuchroute"); status != http.StatusNotFound {
 		t.Errorf("unknown /api path: status = %d, want 404", status)
@@ -339,25 +339,25 @@ func TestMarketProxyDoesNotShadowSiblingRoutes(t *testing.T) {
 }
 
 // TestReadMarketProxyEnv pins the env group: compose-shaped defaults,
-// overrides, and the garbage-timeout fallback.
+// overrides, and the fallback for a garbage or non-positive timeout.
 func TestReadMarketProxyEnv(t *testing.T) {
 	t.Run("defaults", func(t *testing.T) {
-		t.Setenv("MAL_API_MARKET_URL", "")
+		t.Setenv("MAL_API_MARKET_BASE_URL", "")
 		t.Setenv("MAL_API_MARKET_TIMEOUT", "")
 		cfg := readMarketProxyEnv()
-		if cfg.MarketURL != defaultMarketURL {
-			t.Errorf("MarketURL = %q, want %q", cfg.MarketURL, defaultMarketURL)
+		if cfg.MarketBaseURL != defaultMarketBaseURL {
+			t.Errorf("MarketBaseURL = %q, want %q", cfg.MarketBaseURL, defaultMarketBaseURL)
 		}
 		if cfg.Timeout != defaultMarketProxyTimeout {
 			t.Errorf("Timeout = %s, want %s", cfg.Timeout, defaultMarketProxyTimeout)
 		}
 	})
 	t.Run("overrides", func(t *testing.T) {
-		t.Setenv("MAL_API_MARKET_URL", "http://elsewhere:9999/internal")
+		t.Setenv("MAL_API_MARKET_BASE_URL", "http://elsewhere:9999/internal")
 		t.Setenv("MAL_API_MARKET_TIMEOUT", "250ms")
 		cfg := readMarketProxyEnv()
-		if cfg.MarketURL != "http://elsewhere:9999/internal" {
-			t.Errorf("MarketURL = %q, want the override", cfg.MarketURL)
+		if cfg.MarketBaseURL != "http://elsewhere:9999/internal" {
+			t.Errorf("MarketBaseURL = %q, want the override", cfg.MarketBaseURL)
 		}
 		if cfg.Timeout != 250*time.Millisecond {
 			t.Errorf("Timeout = %s, want 250ms", cfg.Timeout)
@@ -365,6 +365,12 @@ func TestReadMarketProxyEnv(t *testing.T) {
 	})
 	t.Run("garbage timeout falls back to the default", func(t *testing.T) {
 		t.Setenv("MAL_API_MARKET_TIMEOUT", "not-a-duration")
+		if cfg := readMarketProxyEnv(); cfg.Timeout != defaultMarketProxyTimeout {
+			t.Errorf("Timeout = %s, want the default %s", cfg.Timeout, defaultMarketProxyTimeout)
+		}
+	})
+	t.Run("non-positive timeout falls back to the default", func(t *testing.T) {
+		t.Setenv("MAL_API_MARKET_TIMEOUT", "0s")
 		if cfg := readMarketProxyEnv(); cfg.Timeout != defaultMarketProxyTimeout {
 			t.Errorf("Timeout = %s, want the default %s", cfg.Timeout, defaultMarketProxyTimeout)
 		}

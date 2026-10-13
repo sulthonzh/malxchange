@@ -40,6 +40,11 @@ type Deps struct {
 	// Internal is mounted at /internal/ for service-to-service RPC and
 	// admin views (engine status etc.). Compose keeps the port off Caddy.
 	Internal *http.ServeMux
+	// Public is mounted at the listener root ("/"): the member surface
+	// Caddy proxies to (issue #24 — /api/* REST, /ws WebSocket). Health
+	// (/healthz, /readyz) stays its fallback, so a service that mounts
+	// nothing public keeps today's behavior.
+	Public *http.ServeMux
 }
 
 // Extra is service-specific boot logic; nil is valid (skeleton services).
@@ -103,12 +108,19 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 	}()
 
 	root := http.NewServeMux()
-	root.Handle("/", health.Handler(map[string]health.Check{
+	checks := map[string]health.Check{
 		"postgres": pool.Ping,
 		"redpanda": func(c context.Context) error { return kafka.Ping(c, producer) },
-	}))
+	}
 	internalMux := http.NewServeMux()
 	root.Handle("/internal/", http.StripPrefix("/internal", internalMux))
+	// Public service surface (issue #24): the root mux hands everything
+	// that is not /internal/ to the public mux, whose own "/" fallback is
+	// still health — so member routes (api's /api/*, /ws) and the health
+	// endpoints share the listener unchanged for the other services.
+	publicMux := http.NewServeMux()
+	publicMux.Handle("/", health.Handler(checks))
+	root.Handle("/", publicMux)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
@@ -118,7 +130,7 @@ func run(ctx context.Context, service string, extra Extra, log *slog.Logger) err
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- srv.ListenAndServe() }()
 
-	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log, Internal: internalMux}
+	d := Deps{Cfg: cfg, Pool: pool, Producer: producer, Outbox: outbox.New(pool), Log: log, Internal: internalMux, Public: publicMux}
 	if extra != nil {
 		if err := extra(ctx, d); err != nil {
 			return fmt.Errorf("extra: %w", err)

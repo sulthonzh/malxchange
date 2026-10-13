@@ -17,12 +17,12 @@ import (
 // (ticket #43): where market's internal REST surface lives and how long
 // one proxied request may take.
 type MarketProxyConfig struct {
-	// MarketURL is the base URL of market's internal REST surface —
+	// MarketBaseURL is the base URL of market's internal REST surface —
 	// scheme, host, and the /internal prefix the boot harness strips
 	// onto market's mux (compose default http://market:8080/internal).
-	// Public paths map onto it one to one: /api/markets →
-	// <MarketURL>/markets.
-	MarketURL string
+	// Public paths map onto it one to one: /api/market/markets →
+	// <MarketBaseURL>/markets.
+	MarketBaseURL string
 	// Timeout bounds one proxied request end to end — connect, headers,
 	// and body. A market that is down, unreachable, or slow answers 503,
 	// never a hanging connection. Non-positive falls back to the default.
@@ -33,7 +33,7 @@ type MarketProxyConfig struct {
 }
 
 const (
-	defaultMarketURL          = "http://market:8080/internal"
+	defaultMarketBaseURL      = "http://market:8080/internal"
 	defaultMarketProxyTimeout = 5 * time.Second
 )
 
@@ -48,37 +48,36 @@ var (
 )
 
 // LoadMarketProxyConfig reads the proxy's MAL_API_MARKET_* environment
-// once at boot (idempotent; the wallet's LoadWalletEnv pattern).
+// once at boot (idempotent; the LoadAPIEnv pattern).
 func LoadMarketProxyConfig() MarketProxyConfig {
 	marketProxyEnvOnce.Do(func() { marketProxyEnvVal = readMarketProxyEnv() })
 	return marketProxyEnvVal
 }
 
 // readMarketProxyEnv is the pure reader behind LoadMarketProxyConfig.
-// An unparsable MAL_API_MARKET_TIMEOUT falls back to the default (the
-// proxy never boots broken over a typo).
+// An unparsable or non-positive MAL_API_MARKET_TIMEOUT falls back to
+// the default (the proxy never boots broken over a typo).
 func readMarketProxyEnv() MarketProxyConfig {
-	cfg := MarketProxyConfig{
-		MarketURL: config.EnvDefault("MAL_API_MARKET_URL", defaultMarketURL),
-		Timeout:   defaultMarketProxyTimeout,
+	return MarketProxyConfig{
+		MarketBaseURL: config.EnvDefault("MAL_API_MARKET_BASE_URL", defaultMarketBaseURL),
+		Timeout:       envDuration("MAL_API_MARKET_TIMEOUT", defaultMarketProxyTimeout),
 	}
-	if raw := config.EnvDefault("MAL_API_MARKET_TIMEOUT", ""); raw != "" {
-		if d, err := time.ParseDuration(raw); err == nil {
-			cfg.Timeout = d
-		}
-	}
-	return cfg
 }
 
 // RegisterMarketProxy mounts the public market-data routes on the api's
 // public mux (ticket #43; spec #24 story 19 — the exchange is explorable
 // before signup, so these carry no session and no auth). Every route
-// proxies market's internal REST one to one: the same path under the
-// public /api prefix, the raw query untouched, the JSON body streamed
-// back verbatim so the public wire cannot drift from the internal one
-// (golden-compared by the integration test). Market names contain a
-// slash (BTC/USDT), so the wildcards are greedy — exactly like
-// market's own patterns.
+// proxies one of market's internal REST endpoints one to one: the
+// public /api/market segment maps onto market's own path, the raw query
+// rides along untouched, and the JSON body streams back verbatim so the
+// public wire cannot drift from the internal one (golden-compared by
+// the integration test). The /api/market namespace is the prefix the
+// web scaffold's market seams already speak (apps/web/src/pages/
+// index.vue: MARKETS_PATH '/market/markets', TICKERS_PATH
+// '/market/tickers' against the api base) and keeps the data routes
+// apart from the sibling member surfaces (#37's /api/uc/…, #45's
+// /api/announcements…). Market names contain a slash (BTC/USDT), so
+// the wildcards are greedy — exactly like market's own patterns.
 //
 // Answers:
 //   - success: market's status, Content-Type, and body bytes as served;
@@ -87,9 +86,6 @@ func readMarketProxyEnv() MarketProxyConfig {
 //     shape never crosses to the public surface);
 //   - market unreachable or slow past the budget: 503
 //     {"message":"market data is temporarily unavailable"}.
-//
-// The boot wiring that calls this registrar lands with ticket #37's
-// server assembly; this file compiles standalone.
 func RegisterMarketProxy(mux *http.ServeMux, cfg MarketProxyConfig) {
 	timeout := cfg.Timeout
 	if timeout <= 0 {
@@ -100,16 +96,16 @@ func RegisterMarketProxy(mux *http.ServeMux, cfg MarketProxyConfig) {
 		log = slog.Default()
 	}
 	p := &marketProxy{
-		base:   strings.TrimSuffix(cfg.MarketURL, "/"),
+		base:   strings.TrimSuffix(cfg.MarketBaseURL, "/"),
 		client: &http.Client{Timeout: timeout},
 		log:    log,
 	}
-	mux.HandleFunc("GET /api/markets", p.proxy)
-	mux.HandleFunc("GET /api/trades/{market...}", p.proxy)
-	mux.HandleFunc("GET /api/depth/{market...}", p.proxy)
-	mux.HandleFunc("GET /api/kline/{market...}", p.proxy)
-	mux.HandleFunc("GET /api/ticker/{market...}", p.proxy)
-	mux.HandleFunc("GET /api/tickers", p.proxy)
+	mux.HandleFunc("GET /api/market/markets", p.proxy)
+	mux.HandleFunc("GET /api/market/trades/{market...}", p.proxy)
+	mux.HandleFunc("GET /api/market/depth/{market...}", p.proxy)
+	mux.HandleFunc("GET /api/market/kline/{market...}", p.proxy)
+	mux.HandleFunc("GET /api/market/ticker/{market...}", p.proxy)
+	mux.HandleFunc("GET /api/market/tickers", p.proxy)
 }
 
 // marketProxy is the mounted proxy: one HTTP client with the bounded
@@ -121,9 +117,10 @@ type marketProxy struct {
 }
 
 // proxy forwards one request to market's internal REST. The path drops
-// only the public /api prefix; the raw query rides along untouched.
+// only the public /api/market prefix; the raw query rides along
+// untouched.
 func (p *marketProxy) proxy(w http.ResponseWriter, req *http.Request) {
-	target := p.base + strings.TrimPrefix(req.URL.Path, "/api")
+	target := p.base + strings.TrimPrefix(req.URL.Path, "/api/market")
 	if req.URL.RawQuery != "" {
 		target += "?" + req.URL.RawQuery
 	}
@@ -162,15 +159,12 @@ type upstreamError struct {
 }
 
 // writeUpstream relays one upstream answer. Errors (status >= 400) are
-// re-emitted in the public envelope {"message": …} with market's status
-// and message verbatim — same names, public shape (the wire contract
-// useApi.ts reads). Anything that is not market's error JSON (a
-// non-JSON body from a proxy in between) passes through untouched
-// rather than being mangled. Successes stream back exactly as served.
-//
-// Kept local (not the shared WriteError from #37's errors.go) so this
-// file compiles before that one lands; same contract — collapse at
-// merge if desired.
+// re-emitted in the shared public envelope (errors.go's WriteError)
+// with market's status and message verbatim — same names, public shape
+// (the wire contract useApi.ts reads). Anything that is not market's
+// error JSON (a non-JSON body from a proxy in between) passes through
+// untouched rather than being mangled. Successes stream back exactly
+// as served.
 func writeUpstream(w http.ResponseWriter, status int, contentType string, body []byte) {
 	if status < http.StatusBadRequest {
 		if contentType != "" {
@@ -189,18 +183,11 @@ func writeUpstream(w http.ResponseWriter, status int, contentType string, body [
 		_, _ = w.Write(body)
 		return
 	}
-	writePublicError(w, status, ue.Error)
-}
-
-// writePublicError answers in the public error envelope.
-func writePublicError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"message": message})
+	WriteError(w, status, ue.Error)
 }
 
 // writeDown answers the 503 for an unreachable or slow market.
 func (p *marketProxy) writeDown(w http.ResponseWriter, cause error) {
 	p.log.Warn("market data proxy: market unavailable", "base", p.base, "error", cause)
-	writePublicError(w, http.StatusServiceUnavailable, errMarketDown.Error())
+	WriteError(w, http.StatusServiceUnavailable, errMarketDown.Error())
 }

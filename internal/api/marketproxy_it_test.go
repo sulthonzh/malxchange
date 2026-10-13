@@ -136,8 +136,8 @@ func newMarketProxyITStack(t *testing.T) (marketSrv, apiSrv *httptest.Server) {
 
 	pub := http.NewServeMux()
 	RegisterMarketProxy(pub, MarketProxyConfig{
-		MarketURL: marketSrv.URL + "/internal",
-		Timeout:   5 * time.Second,
+		MarketBaseURL: marketSrv.URL + "/internal",
+		Timeout:       5 * time.Second,
 	})
 	apiSrv = httptest.NewServer(pub)
 	t.Cleanup(apiSrv.Close)
@@ -234,7 +234,7 @@ func TestMarketProxyGoldenComparesAgainstMarketInternal(t *testing.T) {
 	}
 	for _, path := range paths {
 		dStatus, dCT, dBody := mpGet(t, marketSrv.URL+"/internal"+path)
-		pStatus, pCT, pBody := mpGet(t, apiSrv.URL+"/api"+path)
+		pStatus, pCT, pBody := mpGet(t, apiSrv.URL+"/api/market"+path)
 
 		if pStatus != dStatus {
 			t.Errorf("GET %s: public status = %d, internal status = %d", path, pStatus, dStatus)
@@ -277,7 +277,7 @@ func TestMarketProxyGoldenComparesAgainstMarketInternal(t *testing.T) {
 
 	// Sanity: the seeds must actually be answerable — a golden compare
 	// against an empty projection would pass vacuously.
-	_, _, tickBody := mpGet(t, apiSrv.URL+"/api/ticker/BTC/USDT")
+	_, _, tickBody := mpGet(t, apiSrv.URL+"/api/market/ticker/BTC/USDT")
 	var tick struct {
 		Last string `json:"last"`
 	}
@@ -287,7 +287,7 @@ func TestMarketProxyGoldenComparesAgainstMarketInternal(t *testing.T) {
 	if tick.Last == "" {
 		t.Errorf("ticker last = %q, want the seeded Fill's price (empty projection?)", tick.Last)
 	}
-	_, _, marketsBody := mpGet(t, apiSrv.URL+"/api/markets")
+	_, _, marketsBody := mpGet(t, apiSrv.URL+"/api/market/markets")
 	if m := string(marketsBody); !strings.Contains(m, "BTC/USDT") || strings.Contains(m, "DOGE/USDT") {
 		t.Errorf("visible listing = %q, want BTC/USDT listed and the invisible DOGE/USDT absent", m)
 	}
@@ -305,7 +305,7 @@ func TestMarketProxyRealMarketDownAnswers503(t *testing.T) {
 	marketSrv.Close()
 
 	start := time.Now()
-	status, contentType, body := mpGet(t, apiSrv.URL+"/api/markets")
+	status, contentType, body := mpGet(t, apiSrv.URL+"/api/market/markets")
 	elapsed := time.Since(start)
 	if status != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", status)

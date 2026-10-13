@@ -127,7 +127,7 @@ func (p *marketProxy) proxy(w http.ResponseWriter, req *http.Request) {
 	if req.URL.RawQuery != "" {
 		target += "?" + req.URL.RawQuery
 	}
-	upreq, err := mustGet(req, target)
+	upreq, err := newUpstreamGet(req, target)
 	if err != nil {
 		p.writeDown(w, err)
 		return
@@ -146,16 +146,17 @@ func (p *marketProxy) proxy(w http.ResponseWriter, req *http.Request) {
 	writeUpstream(w, up.StatusCode, up.Header.Get("Content-Type"), body)
 }
 
-// mustGet builds the upstream GET bound to the caller's context, so a
-// client disconnect cancels the upstream request too. A target the http
-// package cannot even parse (a malformed configured base) is
+// newUpstreamGet builds the upstream GET bound to the caller's context,
+// so a client disconnect cancels the upstream request too. A target the
+// http package cannot even parse (a malformed configured base) is
 // unreachability like any other — the error flows to the same bounded
 // 503, never a panic.
-func mustGet(req *http.Request, target string) (*http.Request, error) {
+func newUpstreamGet(req *http.Request, target string) (*http.Request, error) {
 	return http.NewRequestWithContext(req.Context(), http.MethodGet, target, nil)
 }
 
 // upstreamError is the internal {"error": …} body market's named
+// errors arrive in.
 type upstreamError struct {
 	Error string `json:"error"`
 }

@@ -61,6 +61,10 @@ func RegisterContent(mux *http.ServeMux, cfg ContentConfig) {
 		c.log = slog.Default()
 	}
 	mux.HandleFunc("GET /api/announcements", c.announcements)
+	mux.HandleFunc("GET /api/announcements/{id}", c.announcementDetail)
+	mux.HandleFunc("GET /api/help", c.helpCenter)
+	mux.HandleFunc("GET /api/help/categories/{cate}", c.helpList)
+	mux.HandleFunc("GET /api/help/articles/{id}", c.helpDetail)
 }
 
 // contentProxy is the admin-api client behind the member content
@@ -212,6 +216,109 @@ func (c *contentProxy) announcements(w http.ResponseWriter, req *http.Request) {
 	writeContentJSON(w, page)
 }
 
+// announcementBody is an announcement's full document: the summary
+// fields plus the HTML body the CMS stored.
+type announcementBody struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	CreateTime string `json:"createTime"`
+	Content    string `json:"content"`
+}
+
+// announcementDetail is one announcement with the adjacent summaries
+// for prev/next navigation (the legacy NoticeItem page's shape); Back
+// and Next are null at the ends of the listing.
+type announcementDetail struct {
+	Info announcementBody `json:"info"`
+	Back *contentSummary  `json:"back"`
+	Next *contentSummary  `json:"next"`
+}
+
+var errAnnouncementNotFound = errors.New("announcement not found")
+
+// announcementDetail serves one announcement. A degraded upstream is
+// indistinguishable from an empty content set, so it and an unknown id
+// both answer not found — the front renders its empty state (ticket #45).
+func (c *contentProxy) announcementDetail(w http.ResponseWriter, req *http.Request) {
+	var detail announcementDetail
+	path := "/internal/content/announcements/" + url.PathEscape(req.PathValue("id"))
+	if err := c.get(req.Context(), path, &detail); err != nil {
+		writeContentErr(w, http.StatusNotFound, errAnnouncementNotFound)
+		return
+	}
+	writeContentJSON(w, detail)
+}
+
+// helpCategory is one section of the help center: the category's id
+// (the legacy cate), its title, and its articles in reading order.
+type helpCategory struct {
+	Cate  string           `json:"cate"`
+	Title string           `json:"title"`
+	Items []contentSummary `json:"items"`
+}
+
+// helpCenter serves the help-center overview: every category with its
+// articles. A degraded upstream answers the empty overview (the front
+// renders its empty state), and a null items array never reaches the
+// wire — api answers [] even if the upstream violates the contract.
+func (c *contentProxy) helpCenter(w http.ResponseWriter, req *http.Request) {
+	var categories []helpCategory
+	if err := c.get(req.Context(), "/internal/content/help", &categories); err != nil {
+		categories = nil
+	}
+	if categories == nil {
+		categories = []helpCategory{}
+	}
+	for i := range categories {
+		if categories[i].Items == nil {
+			categories[i].Items = []contentSummary{}
+		}
+	}
+	writeContentJSON(w, categories)
+}
+
+// helpList serves one category's article listing.
+func (c *contentProxy) helpList(w http.ResponseWriter, req *http.Request) {
+	pageNo, pageSize, err := contentPageParams(req)
+	if err != nil {
+		writeContentErr(w, http.StatusBadRequest, err)
+		return
+	}
+	prefix := "/internal/content/help/categories/" + url.PathEscape(req.PathValue("cate"))
+	var page contentPage
+	if err := c.get(req.Context(), contentListPath(prefix, pageNo, pageSize), &page); err != nil {
+		page = contentPage{} // degraded or unknown: the empty listing
+	}
+	if page.Content == nil {
+		page.Content = []contentSummary{}
+	}
+	writeContentJSON(w, page)
+}
+
+// helpArticle is one help document: the summary fields, the HTML body,
+// and the category it belongs to.
+type helpArticle struct {
+	ID         string `json:"id"`
+	Title      string `json:"title"`
+	CreateTime string `json:"createTime"`
+	Content    string `json:"content"`
+	Cate       string `json:"cate"`
+}
+
+var errHelpArticleNotFound = errors.New("help article not found")
+
+// helpDetail serves one help article, with the same not-found rule as
+// announcement detail.
+func (c *contentProxy) helpDetail(w http.ResponseWriter, req *http.Request) {
+	var article helpArticle
+	path := "/internal/content/help/articles/" + url.PathEscape(req.PathValue("id"))
+	if err := c.get(req.Context(), path, &article); err != nil {
+		writeContentErr(w, http.StatusNotFound, errHelpArticleNotFound)
+		return
+	}
+	writeContentJSON(w, article)
+}
+
 func contentAnnouncementsPath(pageNo, pageSize int) string {
 	return contentListPath("/internal/content/announcements", pageNo, pageSize)
 }
@@ -236,5 +343,10 @@ func writeContentErr(w http.ResponseWriter, status int, err error) {
 
 func writeContentJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(v)
+	enc := json.NewEncoder(w)
+	// CMS bodies are HTML; pass them through literally instead of
+	// \u003c-escaping — the contract (content_CONTRACT.md) pins the
+	// upstream's bytes, and both decode identically for clients.
+	enc.SetEscapeHTML(false)
+	_ = enc.Encode(v)
 }

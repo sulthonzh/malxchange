@@ -177,3 +177,137 @@ func TestAnnouncementsListingForwardsExplicitPagination(t *testing.T) {
 		t.Errorf("upstream served %q, want the caller's pagination forwarded", up.lastServed())
 	}
 }
+
+// The announcement detail round-trips the documented contract: the
+// body under info plus the adjacent summaries for prev/next
+// navigation. An unknown id answers 404 with the public error envelope
+// ({"message":...}, the shape apps/web's useApi reads).
+func TestAnnouncementDetailRoundTripsContract(t *testing.T) {
+	up := newStubAdminAPI(t)
+	srv := newContentMemberAPI(t, ContentConfig{AdminBaseURL: up.URL()})
+
+	resp, err := srv.Client().Get(srv.URL + "/api/announcements/a-2")
+	if err != nil {
+		t.Fatalf("get announcement: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	got := readBody(t, resp)
+	want := `{"info":{"id":"a-2","title":"Second maintenance window","createTime":"2026-10-12T08:00:00Z",` +
+		`"content":"<p>Read-only mode on Sunday.</p>"},"back":{"id":"a-1","title":"Listing announced",` +
+		`"createTime":"2026-10-10T12:30:00Z"},"next":null}`
+	if got != want {
+		t.Errorf("body =\n%s\nwant\n%s", got, want)
+	}
+	if up.lastServed() != "GET /internal/content/announcements/a-2" {
+		t.Errorf("upstream served %q, want the detail document", up.lastServed())
+	}
+
+	resp, err = srv.Client().Get(srv.URL + "/api/announcements/nope")
+	if err != nil {
+		t.Fatalf("get unknown announcement: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if got, want := readBody(t, resp), `{"message":"announcement not found"}`; got != want {
+		t.Errorf("error body = %s, want %s", got, want)
+	}
+}
+
+// The help surfaces round-trip the documented contract: the category
+// overview, one category's paginated listing, and an article body.
+func TestHelpSurfacesRoundTripContract(t *testing.T) {
+	up := newStubAdminAPI(t)
+	srv := newContentMemberAPI(t, ContentConfig{AdminBaseURL: up.URL()})
+	client := srv.Client()
+
+	resp, err := client.Get(srv.URL + "/api/help")
+	if err != nil {
+		t.Fatalf("get help center: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("help center status = %d, want 200", resp.StatusCode)
+	}
+	got := readBody(t, resp)
+	want := `[{"cate":"0","title":"Getting started","items":[{"id":"h-1","title":"How to deposit","createTime":"2026-10-01T09:00:00Z"}]},` +
+		`{"cate":"1","title":"Fees","items":[]}]`
+	if got != want {
+		t.Errorf("help center body =\n%s\nwant\n%s", got, want)
+	}
+	if up.lastServed() != "GET /internal/content/help" {
+		t.Errorf("upstream served %q, want the help overview", up.lastServed())
+	}
+
+	resp, err = client.Get(srv.URL + "/api/help/categories/0?pageNo=1&pageSize=10")
+	if err != nil {
+		t.Fatalf("get help list: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("help list status = %d, want 200", resp.StatusCode)
+	}
+	got = readBody(t, resp)
+	want = `{"content":[{"id":"h-1","title":"How to deposit","createTime":"2026-10-01T09:00:00Z"}],"totalElements":1}`
+	if got != want {
+		t.Errorf("help list body =\n%s\nwant\n%s", got, want)
+	}
+	if up.lastServed() != "GET /internal/content/help/categories/0?pageNo=1&pageSize=10" {
+		t.Errorf("upstream served %q, want the category listing", up.lastServed())
+	}
+
+	resp, err = client.Get(srv.URL + "/api/help/articles/h-1")
+	if err != nil {
+		t.Fatalf("get help article: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("help article status = %d, want 200", resp.StatusCode)
+	}
+	got = readBody(t, resp)
+	want = `{"id":"h-1","title":"How to deposit","createTime":"2026-10-01T09:00:00Z",` +
+		`"content":"<p>Deposits credit after the Coin's confirmation count.</p>","cate":"0"}`
+	if got != want {
+		t.Errorf("help article body =\n%s\nwant\n%s", got, want)
+	}
+	if up.lastServed() != "GET /internal/content/help/articles/h-1" {
+		t.Errorf("upstream served %q, want the article document", up.lastServed())
+	}
+}
+
+// An unknown help article answers 404 with the public error envelope,
+// and an unknown category is an empty listing, not an error (the stub's
+// contract: unknown categories hold no articles).
+func TestHelpUnknownArticleAndCategory(t *testing.T) {
+	up := newStubAdminAPI(t)
+	srv := newContentMemberAPI(t, ContentConfig{AdminBaseURL: up.URL()})
+	client := srv.Client()
+
+	resp, err := client.Get(srv.URL + "/api/help/articles/nope")
+	if err != nil {
+		t.Fatalf("get unknown article: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404", resp.StatusCode)
+	}
+	if got, want := readBody(t, resp), `{"message":"help article not found"}`; got != want {
+		t.Errorf("error body = %s, want %s", got, want)
+	}
+
+	resp, err = client.Get(srv.URL + "/api/help/categories/9")
+	if err != nil {
+		t.Fatalf("get unknown category: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	if got, want := readBody(t, resp), `{"content":[],"totalElements":0}`; got != want {
+		t.Errorf("body = %s, want %s", got, want)
+	}
+}

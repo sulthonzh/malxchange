@@ -40,7 +40,11 @@ func Run(ctx context.Context, d service.Deps) error {
 	funds := newFundsAPI(d.Pool, newWalletClient(LoadFundsConfig(), d.Log), securityGate{pool: d.Pool}, member.withSession, d.Log)
 	funds.Register(d.Public)
 
-	// Parallel-ticket registrars mount here as they land (WebSocket hub).
+	// The member WebSocket: one shared consumer per topic feeding the
+	// in-process hub, /ws on the public mux (ticket #44).
+	if err := startWS(ctx, d, env); err != nil {
+		return err
+	}
 
 	<-ctx.Done()
 	return nil

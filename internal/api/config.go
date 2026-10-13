@@ -5,6 +5,7 @@
 package api
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
@@ -27,6 +28,7 @@ type APIEnv struct {
 	LockoutThreshold  int           // failed logins inside LockoutWindow before the email is locked
 	LockoutWindow     time.Duration // failures older than this stop counting; the lock lifts with them
 	SessionTTL        time.Duration // sliding expiry of a Session (ADR-0006: 7 days)
+	WsBuffer          int           // queued outbound WebSocket messages per socket; overflow closes the socket (ADR-0011)
 }
 
 var (
@@ -50,6 +52,7 @@ func LoadAPIEnv() *APIEnv {
 			LockoutThreshold:  5,
 			LockoutWindow:     envDuration("MAL_API_LOCKOUT_WINDOW", 15*time.Minute),
 			SessionTTL:        envDuration("MAL_API_SESSION_TTL", 7*24*time.Hour),
+			WsBuffer:          envInt("MAL_API_WS_BUFFER", 256),
 		}
 	})
 	return envVal
@@ -68,4 +71,18 @@ func envDuration(key string, def time.Duration) time.Duration {
 		return def
 	}
 	return d
+}
+
+// envInt parses an env var as a positive integer, falling back to def
+// (same misconfiguration policy as envDuration).
+func envInt(key string, def int) int {
+	v := config.EnvDefault(key, "")
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n <= 0 {
+		return def
+	}
+	return n
 }

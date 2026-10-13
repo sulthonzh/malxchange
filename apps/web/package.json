@@ -12,7 +12,8 @@
     "@element-plus/icons-vue": "2.3.2",
     "big.js": "7.0.1",
     "dompurify": "3.4.17",
-    "element-plus": "2.14.7"
+    "element-plus": "2.14.7",
+    "lightweight-charts": "4.2.3"
   },
   "devDependencies": {
     "@element-plus/nuxt": "1.1.5",

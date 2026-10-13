@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -235,13 +236,20 @@ func ListMemberDeposits(ctx context.Context, db DB, member string) ([]OpenDeposi
 	var out []OpenDeposit
 	for rows.Next() {
 		var d OpenDeposit
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&d.Coin, &d.TxID, &d.Vout, &d.Amount, &d.Confirmations,
 			&d.Needed, &d.Status, &created); err != nil {
 			return nil, err
 		}
-		d.DetectedAt = string(created)
+		d.DetectedAt = created.UTC().Format(PgTimestampText)
 		out = append(out, d)
 	}
 	return out, rows.Err()
 }
+
+// PgTimestampText renders a timestamptz the way Postgres' text
+// protocol does ("2026-10-13 09:00:00.123456+00") — the documented
+// wire form of the RPC timestamps. pgx's binary protocol cannot scan
+// timestamptz into []byte, so the scan goes through time.Time and
+// formats back to the same text.
+const PgTimestampText = "2006-01-02 15:04:05.999999-07"

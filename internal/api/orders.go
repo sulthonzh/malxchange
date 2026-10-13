@@ -52,8 +52,8 @@ import (
 // compose install needs none of these set.
 type OrderConfig struct {
 	WalletBaseURL   string        // wallet freeze RPC
-	MarketBaseURL   string        // market config for validation (GET /internal/markets)
-	ExchangeBaseURL string        // exchange member-order RPC (GET /internal/orders/*)
+	MarketBaseURL   string        // market config for validation (GET /markets behind the /internal mount)
+	ExchangeBaseURL string        // exchange member-order RPC (GET /orders/* behind the /internal mount)
 	MarketCacheTTL  time.Duration // how long a fetched market listing serves validation
 }
 
@@ -61,9 +61,9 @@ type OrderConfig struct {
 // deploy/env.example.
 func LoadOrderConfig() OrderConfig {
 	return OrderConfig{
-		WalletBaseURL:   config.EnvDefault("MAL_API_WALLET_BASE_URL", "http://wallet:8080"),
-		MarketBaseURL:   config.EnvDefault("MAL_API_MARKET_BASE_URL", "http://market:8080"),
-		ExchangeBaseURL: config.EnvDefault("MAL_API_EXCHANGE_BASE_URL", "http://exchange:8080"),
+		WalletBaseURL:   config.EnvDefault("MAL_API_WALLET_BASE_URL", "http://wallet:8080/internal"),
+		MarketBaseURL:   config.EnvDefault("MAL_API_MARKET_BASE_URL", "http://market:8080/internal"),
+		ExchangeBaseURL: config.EnvDefault("MAL_API_EXCHANGE_BASE_URL", "http://exchange:8080/internal"),
 		MarketCacheTTL:  envDuration("MAL_API_MARKET_CACHE_TTL", 5*time.Second),
 	}
 }
@@ -174,6 +174,7 @@ func (a *orderAPI) handlePlace(w http.ResponseWriter, r *http.Request, s Session
 		case errors.Is(err, errInsufficientFunds):
 			WriteError(w, http.StatusConflict, "You do not have enough available funds to place this order.")
 		case errors.Is(err, errFundsUnavailable):
+			a.log.Error("wallet freeze failed", "err", err)
 			WriteError(w, http.StatusServiceUnavailable, "The funds service is unavailable. Try again in a moment.")
 		default:
 			writeErr(w, a.log, err)
@@ -219,7 +220,8 @@ func validatePlaceAmounts(w http.ResponseWriter, req placeOrderRequest, mkt mark
 			WriteError(w, http.StatusBadRequest, "A limit order needs a price.")
 			return decimal.Decimal{}, decimal.Decimal{}, false
 		}
-		price, err := money.Parse(req.Price)
+		parsedPrice, err := money.Parse(req.Price)
+		price = parsedPrice
 		if err != nil {
 			WriteError(w, http.StatusBadRequest, "The price must be a decimal number like 50000.10.")
 			return decimal.Decimal{}, decimal.Decimal{}, false
@@ -307,7 +309,7 @@ func (a *orderAPI) freezeHold(ctx context.Context, orderID, member, market, side
 		"side": side, "coin": coin, "amount": amount,
 	})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
-		a.cfg.WalletBaseURL+"/internal/freeze", bytes.NewReader(body))
+		a.cfg.WalletBaseURL+"/freeze", bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("freeze request: %w", err)
 	}
@@ -371,7 +373,7 @@ func (a *orderAPI) enqueueCommand(ctx context.Context, tx pgx.Tx, cmd events.Ord
 // ---- current/history: the exchange proxy ----
 
 // proxyOrders fronts the exchange service's member-order RPC (ticket
-// #41) at the given internal path ("/orders/current" or
+// #41) at the given path ("/orders/current" or
 // "/orders/history"). api adds no drift: the upstream body streams
 // through byte-for-byte with its status and content type, the member
 // comes from the session (never the query string), and the member's
@@ -386,7 +388,7 @@ func (a *orderAPI) proxyOrders(w http.ResponseWriter, r *http.Request, path, mem
 		}
 	}
 	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet,
-		a.cfg.ExchangeBaseURL+"/internal"+path+"?"+q.Encode(), nil)
+		a.cfg.ExchangeBaseURL+path+"?"+q.Encode(), nil)
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -445,7 +447,7 @@ func (a *orderAPI) handleHistory(w http.ResponseWriter, r *http.Request, s Sessi
 
 // ---- market config cache ----
 
-// marketSummary is one row of the market service's GET /internal/markets
+// marketSummary is one row of the market service's GET /markets (behind the /internal mount)
 // listing (internal/market MarketSummary); the validation fields are
 // tickSize, lotSize, baseScale, quoteScale.
 type marketSummary struct {
@@ -507,7 +509,7 @@ func (c *marketCache) market(ctx context.Context, name string) (marketSummary, e
 func (c *marketCache) fetch(ctx context.Context, name string) (marketSummary, error) {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/internal/markets", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base+"/markets", nil)
 	if err != nil {
 		return marketSummary{}, fmt.Errorf("%w: %v", errMarketInfoUnavailable, err)
 	}

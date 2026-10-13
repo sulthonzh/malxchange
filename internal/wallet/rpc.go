@@ -558,13 +558,13 @@ func (r *RPC) journalEntries(w http.ResponseWriter, req *http.Request) {
 	var lines []line
 	for rows.Next() {
 		var l line
-		var at []byte
+		var at time.Time
 		if err := rows.Scan(&l.Coin, &l.Kind, &l.Amount, &l.AvailDelta, &l.FrozenDelta,
 			&l.Reason, &l.Ref, &at); err != nil {
 			writeErr(w, err)
 			return
 		}
-		l.At = string(at)
+		l.At = at.UTC().Format(PgTimestampText)
 		lines = append(lines, l)
 	}
 	if q.Get("format") != "csv" {

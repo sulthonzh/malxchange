@@ -1,4 +1,4 @@
--- 0004_order_intents (ticket #42): the api-side record of every order
+-- 0005_order_intents (ticket #42): the api-side record of every order
 -- submission that passed validation and wallet freeze. api holds no
 -- order-table copy of the exchange's state (spec #24 story 30) — this
 -- row is the submit-time record only: it authorizes cancel (a member

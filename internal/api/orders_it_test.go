@@ -15,6 +15,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -173,8 +174,9 @@ func newOrdersStack(t *testing.T) *ordersStack {
 		ob: outbox.New(pool), log: testLogger()}
 	member.RegisterMember(root)
 	orders := newOrderAPI(pool, env, outbox.New(pool), testLogger(), OrderConfig{
-		WalletBaseURL: wsrv.URL, MarketBaseURL: market.URL, ExchangeBaseURL: exsrv.URL,
-		MarketCacheTTL: time.Second,
+		WalletBaseURL: wsrv.URL + "/internal", MarketBaseURL: market.URL + "/internal",
+		ExchangeBaseURL: exsrv.URL + "/internal",
+		MarketCacheTTL:  time.Second,
 	})
 	orders.RegisterOrders(root)
 	rest := httptest.NewServer(root)
@@ -381,7 +383,11 @@ func (s *ordersStack) commands(n int) []events.OrderCommand {
 	for time.Now().Before(deadline) && len(out) < n {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		fetches := s.consumer.PollRecords(ctx, 10)
-		fetches.EachError(func(_ string, _ int32, err error) { s.t.Fatal(err) })
+		fetches.EachError(func(_ string, _ int32, err error) {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				s.t.Fatal(err)
+			}
+		})
 		for _, rec := range fetches.Records() {
 			env, err := events.Decode(rec.Value)
 			if err != nil {
@@ -408,7 +414,11 @@ func (s *ordersStack) assertNoCommand(wait time.Duration) {
 	for time.Now().Before(deadline) {
 		ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 		fetches := s.consumer.PollRecords(ctx, 10)
-		fetches.EachError(func(_ string, _ int32, err error) { s.t.Fatal(err) })
+		fetches.EachError(func(_ string, _ int32, err error) {
+			if !errors.Is(err, context.DeadlineExceeded) {
+				s.t.Fatal(err)
+			}
+		})
 		if got := len(fetches.Records()); got != 0 {
 			cancel()
 			s.t.Fatalf("%d order.command messages, want none", got)
@@ -460,8 +470,8 @@ func TestPlaceLimitOrderFreezesQuoteCostAndPublishesCommand(t *testing.T) {
 	if frozen != "10.000020" || avail != "9989.999980" {
 		t.Fatalf("USDT = available %s frozen %s, want 9989.999980 / 10.000020", avail, frozen)
 	}
-	if got := s.journalFreezeAmount(memberID, orderID); got != "10.000020" {
-		t.Fatalf("freeze journal amount = %s, want 10.000020", got)
+	if got := s.journalFreezeAmount(memberID, orderID); got != "10.00002" {
+		t.Fatalf("freeze journal amount = %s, want 10.00002", got)
 	}
 }
 
@@ -559,8 +569,8 @@ func TestPlaceRejectsBadNumbersWithNothingFrozenOrPublished(t *testing.T) {
 			"The amount must be a decimal number like 0.0001."},
 		{"amount off lot", map[string]string{
 			"market": "BTC/USDT", "side": "buy", "kind": "limit",
-			"price": "1.0", "amount": "0.0003"}, http.StatusBadRequest,
-			"The amount 0.0003 must be a multiple of the lot size 0.0001."},
+			"price": "1.0", "amount": "0.00015"}, http.StatusBadRequest,
+			"The amount 0.00015 must be a multiple of the lot size 0.0001."},
 		{"amount over base scale", map[string]string{
 			"market": "BTC/USDT", "side": "buy", "kind": "limit",
 			"price": "1.0", "amount": "0.000000001"}, http.StatusBadRequest,

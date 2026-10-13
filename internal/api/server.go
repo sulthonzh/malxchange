@@ -32,8 +32,13 @@ func Run(ctx context.Context, d service.Deps) error {
 	// before signup.
 	RegisterMarketProxy(d.Public, LoadMarketProxyConfig())
 
-	// Parallel-ticket registrars mount here as they land (WebSocket hub,
-	// funds).
+	// Member funds (ticket #40): balances, deposits, records, the
+	// withdrawal gate, and the withdrawal address book — wallet's
+	// internal RPC proxied one to one.
+	funds := newFundsAPI(d.Pool, newWalletClient(LoadFundsConfig(), d.Log), closedGate{}, member.withSession, d.Log)
+	funds.Register(d.Public)
+
+	// Parallel-ticket registrars mount here as they land (WebSocket hub).
 
 	<-ctx.Done()
 	return nil

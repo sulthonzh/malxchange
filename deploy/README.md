@@ -42,6 +42,15 @@ Each of these cost real debugging time; check them before theorising:
   (`api.github.com/repos/<owner>/<repo>/tags`) and diff the pinned source
   in the Go module cache — the ltcd panic was upstream, and no newer tag
   existed to bump to.
+- **A down/up cycle keeps the chain; volumes survive it.** The test
+  profile's `volumes: []` does not clear the base file's
+  `btcd_data`/`ltcd_data` mounts (compose merges volume lists), so
+  `make test-profile-down && make test-profile-up` resumes the old
+  simnet chain instead of rebooting one. Symptom: the chain E2E passes
+  locally on a tall old chain while CI fails on its fresh per-run
+  volume (#36, rpc -26 at height 101). A fresh chain needs
+  `docker volume rm malxchange_btcd_data malxchange_ltcd_data` between
+  down and up — then probe `getblockcount` to confirm height 0.
 
 ## Layout
 

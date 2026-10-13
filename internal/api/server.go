@@ -19,8 +19,10 @@ func Run(ctx context.Context, d service.Deps) error {
 	member := &memberAPI{pool: d.Pool, env: env, mailer: mailer, ob: d.Outbox, log: d.Log}
 	member.RegisterMember(d.Public)
 
+	RegisterContent(d.Public, LoadContentConfig())
+
 	// Parallel-ticket registrars mount here as they land (market-data
-	// proxy, content proxy, WebSocket hub, funds, orders).
+	// proxy, WebSocket hub, funds, orders).
 
 	<-ctx.Done()
 	return nil

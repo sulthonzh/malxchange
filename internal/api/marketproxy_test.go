@@ -127,38 +127,38 @@ func TestMarketProxyForwardsRequestLineVerbatim(t *testing.T) {
 
 func TestMarketProxyPassesSuccessBodiesThroughVerbatim(t *testing.T) {
 	answers := map[string]stubAnswer{
-		"/markets": {
+		"/internal/markets": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body: `{"market":"BTC/USDT","baseCoin":"BTC","quoteCoin":"USDT","zone":"main","sort":1,` +
 				`"featured":true,"baseScale":8,"quoteScale":2,"tickSize":"0.10","lotSize":"0.0001"}` + "\n",
 		},
-		"/trades/BTC/USDT": {
+		"/internal/trades/BTC/USDT": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body: `[{"id":"fill-0001","price":"50000.10","amount":"0.0002","turnover":"10.00002",` +
 				`"takerSide":"buy","time":"2026-10-12T09:00:00Z"}]` + "\n",
 		},
-		"/depth/BTC/USDT": {
+		"/internal/depth/BTC/USDT": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body: `{"market":"BTC/USDT","bids":[{"price":"50000.10","amount":"0.0002"}],` +
 				`"asks":[]}` + "\n",
 		},
-		"/kline/BTC/USDT?interval=1m": {
+		"/internal/kline/BTC/USDT?interval=1m": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body: `[{"interval":"1m","openTime":"2026-10-12T09:00:00Z","open":"50000.10",` +
 				`"high":"50010.20","low":"49999.00","close":"50005.00","amount":"1.2345",` +
 				`"turnover":"61728.39","fillCount":7}]` + "\n",
 		},
-		"/ticker/BTC/USDT": {
+		"/internal/ticker/BTC/USDT": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body: `{"market":"BTC/USDT","last":"50000.10","high":"50100.00","low":"49900.00",` +
 				`"turnover":"12345.67"}` + "\n",
 		},
-		"/tickers": {
+		"/internal/tickers": {
 			status:      http.StatusOK,
 			contentType: "application/json",
 			body:        `{"BTC/USDT":{"market":"BTC/USDT","last":"","high":"","low":"","turnover":"0"}}` + "\n",
@@ -250,15 +250,16 @@ func TestMarketProxyRewritesNamedErrorsToPublicEnvelope(t *testing.T) {
 	}
 }
 
-// internalPath derives the fixture key (the upstream request URI) from
-// a public /api path.
+// internalPath derives the fixture key — the upstream request URI,
+// /internal plus the public path minus /api — so the assertion and the
+// stub share one source.
 func internalPath(t *testing.T, public string) string {
 	t.Helper()
 	const prefix = "/api"
 	if len(public) < len(prefix) || public[:len(prefix)] != prefix {
 		t.Fatalf("public path %q lacks the %s prefix", public, prefix)
 	}
-	return public[len(prefix):]
+	return "/internal" + public[len(prefix):]
 }
 
 // TestMarketProxyDownstreamDownAnswers503: a market that cannot be
@@ -292,8 +293,8 @@ func TestMarketProxySlowDownstreamIsBoundedNotHung(t *testing.T) {
 	up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-release
 	}))
-	t.Cleanup(func() { close(release) })
-	t.Cleanup(up.Close)
+	t.Cleanup(up.Close)                  // registered first → runs last:
+	t.Cleanup(func() { close(release) }) // Close waits for the handler, so release first
 
 	srv := mountProxy(t, MarketProxyConfig{MarketURL: up.URL + "/internal", Timeout: 60 * time.Millisecond})
 
@@ -317,7 +318,7 @@ func TestMarketProxySlowDownstreamIsBoundedNotHung(t *testing.T) {
 // answering, and an unknown /api path stays the mux's own 404.
 func TestMarketProxyDoesNotShadowSiblingRoutes(t *testing.T) {
 	up := stubUpstream(t, map[string]stubAnswer{
-		"/markets": {status: http.StatusOK, contentType: "application/json", body: "[]\n"},
+		"/internal/markets": {status: http.StatusOK, contentType: "application/json", body: "[]\n"},
 	})
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/me", func(w http.ResponseWriter, r *http.Request) {

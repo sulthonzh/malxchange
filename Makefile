@@ -86,6 +86,8 @@ lint:
 	@out=$$(gofmt -l cmd internal); if [ -n "$$out" ]; then echo "gofmt needed: $$out"; exit 1; fi
 	@hits=$$(grep -rnF 'Status()[' --include='*.go' cmd internal); if [ -n "$$hits" ]; then \
 		echo "positional Status() index — map order is random; select by market (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
+	@hits=$$(grep -nF 'addr + "/healthz"' internal/service/service.go); if [ -n "$$hits" ]; then \
+		echo "self-healthcheck probes liveness (/healthz answers ok unconditionally) — probe /readyz or a dead worker reads healthy (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@{ grep -rhoE '\$$\{MAL_[A-Z0-9_]+' deploy/*.yaml 2>/dev/null | sed 's/\$${//'; \
 	   grep -rhoE '(os\.Getenv|EnvDefault)\("MAL_[A-Z0-9_]+' --include='*.go' cmd internal | grep -oE 'MAL_[A-Z0-9_]+'; } \
 	  | grep -vE 'MAL_(TEST_|PG_|KAFKA_|HTTP_|UNSET_)' | sort -u > /tmp/mal_wanted.$$$$; \

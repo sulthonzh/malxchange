@@ -19,3 +19,7 @@ Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root. See `docs/ag
 ### Review checklist
 
 Rules the code reviewer enforces on every diff. See `docs/agents/review-checklist.md`.
+
+### Worktrees
+
+Sibling worktrees under `../spec24-wt/` hold in-flight ticket branches; the primary checkout is merge-only. Editing code: address files by absolute path and confirm the first edit of a session with `git status` in the intended worktree — a relative path can silently land in the primary checkout.

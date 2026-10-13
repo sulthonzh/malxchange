@@ -32,9 +32,9 @@ function toCandle(bar: KlineBar): { time: UTCTimestamp; open: number; high: numb
   }
 }
 
-// Candles carry display values (not money), so the chart converts with
-// Number. All money math stays on decimal strings in the page; nothing
-// in this file ever computes an amount.
+// ADR-0005 waiver — candles carry display values (not money), so the
+// chart converts with Number. All money math stays on decimal strings
+// in the page; nothing in this file ever computes an amount.
 export function createKlineChart(element: HTMLElement): KlineChart {
   const chart: IChartApi = createChart(element, {
     layout: { background: { color: 'transparent' }, textColor: '#8b93a7' },

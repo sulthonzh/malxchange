@@ -82,6 +82,33 @@ api → `order.command`, `member.register`; exchange → `trade.fill`,
 market → `ticker`.
 Money values inside event payloads are decimal strings, always.
 
+## Operating the dev broker
+
+Redpanda runs with SASL (SCRAM-SHA-256); `rpk` inside the container
+needs it spelled through `-X` overrides — flags like `--user` or
+`-X sasl=` do not exist:
+
+    docker exec malxchange-redpanda-1 rpk \
+      -X user="$MAL_KAFKA_USER" -X pass="$MAL_KAFKA_PASSWORD" \
+      -X sasl.mechanism=SCRAM-SHA-256 topic list
+
+**Broker state outlives dev database states.** A topic keeps events
+produced against a database incarnation that no longer exists, and a
+consumer whose fatal settlement contract meets a stale `trade.fill`
+goes down at every boot until the backlog is gone. After resetting a
+dev database, purge the event topics that reference it (the consuming
+service recreates them at boot; offsets live with the topic, so the
+group needs no separate reset):
+
+    docker exec malxchange-redpanda-1 rpk \
+      -X user="$MAL_KAFKA_USER" -X pass="$MAL_KAFKA_PASSWORD" \
+      -X sasl.mechanism=SCRAM-SHA-256 topic delete trade.fill order.completed
+
+Symptom of the unpurged case: a service booting clean ("migrations
+applied", "running") whose every RPC answers `closed pool` — its
+settlement worker died on the stale event and the boot defers closed
+the pool behind it.
+
 ## Installer (production, single host)
 
     sudo install/install.sh --domain exchange.example.com [--without-chains]

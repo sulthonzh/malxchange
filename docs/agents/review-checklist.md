@@ -87,3 +87,36 @@ tripwires like `trades == fills`), with a one-line comment saying so.
 (Symptom: five of six market-slice tickets shipped table-reading ITs
 against the spec's "observable through endpoints" testing decision;
 caught only at slice-end review.)
+
+## Fatal exit paths log their cause before returning
+
+A worker whose error propagates to boot-shutdown must log it first:
+the harness's deferred closes (producer, pool) can block indefinitely,
+so the `service exited` line the harness promises may never print —
+the process dies with no trace. Pair with the readiness rule: compose
+healthchecks probe `/readyz`, never `/healthz` (liveness answers ok
+unconditionally; `make lint` enforces the self-healthcheck side).
+(Symptom: the #51 zombie — a stale `trade.fill` failed settlement,
+the unlogged fatal error deadlocked `pool.Close` on the outbox LISTEN
+conn, and the wallet served `closed pool` 500s for hours while Docker
+reported it healthy.)
+
+## A new app ships its CI job in the same ticket
+
+Every deployable app in the repo (Go service, Nuxt app, future admin)
+gets its lint/test/build wired into `.github/workflows/ci.yml` by the
+ticket that adds it — not by a later review pass. An unwired app is
+untested on every push until someone notices.
+(Symptom: the web app's vitest/build job landed only in the #51
+review-fix commit, after the ticket's own acceptance had already said
+"CI wiring matches existing repo patterns".)
+
+## Deliberate rule-breaks carry a greppable waiver marker
+
+A comment that documents an intentional exception (a coercion an ADR
+bans, a banned synonym on a pinned legacy path) opens with the marker
+`ADR-NNNN waiver —` so reviewers and future lint greps find it by
+pattern. Reviewers grep the marker before flagging the exception site;
+an unmarked waiver reads as a violation and burns a review cycle.
+(Symptom: the #24 review flagged `Number()` in KlineChart although a
+waiver comment sat three lines below it.)

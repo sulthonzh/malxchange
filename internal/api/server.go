@@ -19,10 +19,19 @@ func Run(ctx context.Context, d service.Deps) error {
 	member := &memberAPI{pool: d.Pool, env: env, mailer: mailer, ob: d.Outbox, log: d.Log}
 	member.RegisterMember(d.Public)
 
+	channels := &channelAPI{pool: d.Pool, env: env, log: d.Log}
+	channels.RegisterChannels(d.Public)
+	channels.RegisterChannelAdmin(d.Internal)
+
 	RegisterContent(d.Public, LoadContentConfig())
 
-	// Parallel-ticket registrars mount here as they land (market-data
-	// proxy, WebSocket hub, funds, orders).
+	// Anonymous market data (ticket #43): market's internal read surface
+	// proxied one to one under /api/market — the exchange is explorable
+	// before signup.
+	RegisterMarketProxy(d.Public, LoadMarketProxyConfig())
+
+	// Parallel-ticket registrars mount here as they land (WebSocket hub,
+	// funds, orders).
 
 	<-ctx.Done()
 	return nil

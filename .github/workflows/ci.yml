@@ -45,6 +45,10 @@ jobs:
         run: |
           cd apps/web
           npm ci
+          # The tsconfig extends ./.nuxt/tsconfig.json, which only a
+          # prepare (or a dev run) generates; without it every suite
+          # fails to collect ("no tests").
+          npx nuxt prepare
           npm test
           npm run build
 

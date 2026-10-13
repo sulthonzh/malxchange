@@ -1,4 +1,4 @@
--- 0003_withdraw_addresses: the member's withdrawal address book
+-- 0004_withdraw_addresses: the member's withdrawal address book
 -- (ticket #40) — api-owned: saved withdrawal addresses per Coin with a
 -- member-supplied label. Addresses themselves are not trusted here;
 -- the wallet owns Coin mechanics, this table only remembers what the

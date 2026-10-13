@@ -11,11 +11,13 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -352,14 +354,28 @@ func (s *fundsStack) registerMember(email string) (token, memberID string) {
 	return body["token"].(string), id
 }
 
-// fund credits a member through the wallet's real adjustment RPC, so
-// every balance assertion rests on the real Ledger path.
+// fund credits a member through the wallet's real adjustment RPC (the
+// admin seam, on the wallet server), so every balance assertion rests
+// on the real Ledger path. The Journal stores NUMERIC plain text, so a
+// funded amount reads back normalized (25.500000 → 25.5); records tests
+// that need scale-exact strings assert the balance view, which formats
+// at the Coin's scale.
 func (s *fundsStack) fund(memberID, coin, amount string) {
 	s.t.Helper()
-	status, body := s.post("/internal/adjustments", map[string]string{
-		"member": memberID, "coin": coin, "amount": amount, "reason": "it fixture"}, "")
-	if status != http.StatusOK {
-		s.t.Fatalf("fund %s %s: status %d body %v", memberID, amount, status, body)
+	raw, err := json.Marshal(map[string]string{
+		"member": memberID, "coin": coin, "amount": amount, "reason": "it fixture"})
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	resp, err := http.Post(s.wallet.URL+"/adjustments", "application/json",
+		bytes.NewReader(raw))
+	if err != nil {
+		s.t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		s.t.Fatalf("fund %s %s: status %d body %s", memberID, amount, resp.StatusCode, body)
 	}
 }
 
@@ -488,5 +504,138 @@ func TestFundsJourney(t *testing.T) {
 	credited := byTx["journey-tx-2"]
 	if credited == nil || credited["status"] != "credited" {
 		t.Fatalf("credited deposit: %v", credited)
+	}
+}
+
+// TestRecordsList answers the member center's records page: every
+// Journal movement in member-facing keys, money verbatim, optional
+// Coin filter, [] when empty.
+func TestRecordsList(t *testing.T) {
+	s := newFundsStack(t)
+	token, memberID := s.registerMember("records@example.com")
+	s.awaitAccountsOpened(memberID)
+	s.fund(memberID, "USDT", "25.500000")
+
+	status, raw := s.doRaw(http.MethodGet, "/api/uc/wallet/records", nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("records: status %d body %v", status, raw)
+	}
+	rows, _ := raw.([]any)
+	if len(rows) == 0 {
+		t.Fatalf("records: empty body %v", raw)
+	}
+	var adjustment map[string]any
+	for _, row := range rows {
+		m, _ := row.(map[string]any)
+		if m["kind"] == "adjustment" && m["coin"] == "USDT" {
+			adjustment = m
+		}
+	}
+	if adjustment == nil {
+		t.Fatalf("records: no USDT adjustment entry in %v", raw)
+	}
+	if adjustment["amount"] != "25.5" || adjustment["availDelta"] != "25.5" {
+		t.Errorf("adjustment entry money: amount=%v availDelta=%v, want the exact journal values 25.5",
+			adjustment["amount"], adjustment["availDelta"])
+	}
+	if _, ok := adjustment["reason"].(string); !ok {
+		t.Errorf("adjustment entry reason missing: %v", adjustment)
+	}
+	at, _ := adjustment["at"].(string)
+	if _, err := time.Parse(time.RFC3339, at); err != nil {
+		t.Errorf("adjustment entry at=%q is not RFC3339: %v", at, err)
+	}
+
+	// Coin filter: a Coin with no movements answers [], never null.
+	status, raw = s.doRaw(http.MethodGet, "/api/uc/wallet/records?coin=BTC", nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("records filtered: status %d body %v", status, raw)
+	}
+	if fmt.Sprint(raw) != "[]" {
+		t.Errorf("records filtered by an unmoved Coin: %v, want []", raw)
+	}
+}
+
+// TestWithdrawAddressBookCRUD walks the api-owned withdrawal address
+// book: add, list, relabel, delete — plus the guards (unknown Coin,
+// duplicate, another member's entry invisible and undeletable).
+func TestWithdrawAddressBookCRUD(t *testing.T) {
+	s := newFundsStack(t)
+	token, _ := s.registerMember("book@example.com")
+	otherToken, _ := s.registerMember("book-other@example.com")
+
+	// Unknown Coins cannot enter the book.
+	status, body := s.post("/api/uc/withdraw-addresses", map[string]string{
+		"coin": "DOGE", "address": "0xdead", "label": "nope"}, token)
+	if status != http.StatusBadRequest {
+		t.Fatalf("add unknown coin: status %d body %v", status, body)
+	}
+
+	status, body = s.post("/api/uc/withdraw-addresses", map[string]string{
+		"coin": "USDT", "address": "0xsavings", "label": "Savings"}, token)
+	if status != http.StatusOK {
+		t.Fatalf("add: status %d body %v", status, body)
+	}
+	id, _ := body["id"].(string)
+	if id == "" || body["coin"] != "USDT" || body["address"] != "0xsavings" ||
+		body["label"] != "Savings" || body["createdAt"] == nil {
+		t.Fatalf("add: body %v", body)
+	}
+
+	// Duplicate (same Coin + address) is a conflict.
+	status, body = s.post("/api/uc/withdraw-addresses", map[string]string{
+		"coin": "USDT", "address": "0xsavings", "label": "Again"}, token)
+	if status != http.StatusConflict {
+		t.Fatalf("duplicate add: status %d body %v", status, body)
+	}
+
+	// List shows the entry; another member sees none of it.
+	listEntries := func(tok string) map[string]map[string]any {
+		t.Helper()
+		status, raw := s.doRaw(http.MethodGet, "/api/uc/withdraw-addresses", nil, tok)
+		if status != http.StatusOK {
+			t.Fatalf("list: status %d body %v", status, raw)
+		}
+		rows, _ := raw.([]any)
+		out := map[string]map[string]any{}
+		for _, row := range rows {
+			m, _ := row.(map[string]any)
+			if entryID, _ := m["id"].(string); entryID != "" {
+				out[entryID] = m
+			}
+		}
+		return out
+	}
+	if _, ok := listEntries(token)[id]; !ok {
+		t.Fatal("list: saved entry missing")
+	}
+	if entries := listEntries(otherToken); len(entries) != 0 {
+		t.Fatalf("list: another member sees %v", entries)
+	}
+
+	// Relabel.
+	status, body = s.do(http.MethodPut, "/api/uc/withdraw-addresses/"+id,
+		map[string]string{"label": "Cold storage"}, token)
+	if status != http.StatusOK {
+		t.Fatalf("relabel: status %d body %v", status, body)
+	}
+	if entry := listEntries(token)[id]; entry["label"] != "Cold storage" {
+		t.Fatalf("relabel: entry %v", entry)
+	}
+
+	// Another member cannot touch it.
+	status, _ = s.do(http.MethodDelete, "/api/uc/withdraw-addresses/"+id, nil, otherToken)
+	if status != http.StatusNotFound {
+		t.Fatalf("foreign delete: status %d, want 404", status)
+	}
+
+	// Delete, then the book is empty ([]).
+	status, body = s.do(http.MethodDelete, "/api/uc/withdraw-addresses/"+id, nil, token)
+	if status != http.StatusOK {
+		t.Fatalf("delete: status %d body %v", status, body)
+	}
+	status, raw := s.doRaw(http.MethodGet, "/api/uc/withdraw-addresses", nil, token)
+	if status != http.StatusOK || fmt.Sprint(raw) != "[]" {
+		t.Fatalf("list after delete: status %d body %v, want []", status, raw)
 	}
 }

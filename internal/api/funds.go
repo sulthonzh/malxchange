@@ -73,7 +73,8 @@ func (e *walletUpstreamError) Error() string {
 
 // walletClient is the typed client for the member-facing seams of the
 // wallet's internal RPC (backend-wires.md §1). Paths carry the
-// documented /internal prefix; the base URL is the service origin.
+// prefix-free (the boot harness strips /internal); the base URL is
+// the service origin.
 type walletClient struct {
 	base string
 	http *http.Client
@@ -170,7 +171,7 @@ type walletJournalLine struct {
 }
 
 // walletCoin is the Coin configuration the withdrawal path needs
-// (subset of GET /internal/coins/{name}).
+// (subset of GET /internal/coins/{name} — the client sees /coins/{name}).
 type walletCoin struct {
 	Name         string `json:"name"`
 	Scale        int32  `json:"scale"`
@@ -192,25 +193,25 @@ type walletWithdrawal struct {
 
 func (c *walletClient) accounts(ctx context.Context, member string) ([]walletAccount, error) {
 	var out []walletAccount
-	err := c.call(ctx, http.MethodGet, "/internal/accounts/"+url.PathEscape(member), nil, &out)
+	err := c.call(ctx, http.MethodGet, "/accounts/"+url.PathEscape(member), nil, &out)
 	return out, err
 }
 
 func (c *walletClient) depositAddress(ctx context.Context, member, coin string) (walletAddress, error) {
 	var out walletAddress
-	err := c.call(ctx, http.MethodPost, "/internal/deposit-addresses",
+	err := c.call(ctx, http.MethodPost, "/deposit-addresses",
 		map[string]string{"member": member, "coin": coin}, &out)
 	return out, err
 }
 
 func (c *walletClient) deposits(ctx context.Context, member string) ([]walletDeposit, error) {
 	var out []walletDeposit
-	err := c.call(ctx, http.MethodGet, "/internal/deposits?member="+url.QueryEscape(member), nil, &out)
+	err := c.call(ctx, http.MethodGet, "/deposits?member="+url.QueryEscape(member), nil, &out)
 	return out, err
 }
 
 func (c *walletClient) journal(ctx context.Context, member, coin string) ([]walletJournalLine, error) {
-	path := "/internal/journal/" + url.PathEscape(member)
+	path := "/journal/" + url.PathEscape(member)
 	if coin != "" {
 		path += "?coin=" + url.QueryEscape(coin)
 	}
@@ -221,13 +222,13 @@ func (c *walletClient) journal(ctx context.Context, member, coin string) ([]wall
 
 func (c *walletClient) coin(ctx context.Context, name string) (walletCoin, error) {
 	var out walletCoin
-	err := c.call(ctx, http.MethodGet, "/internal/coins/"+url.PathEscape(name), nil, &out)
+	err := c.call(ctx, http.MethodGet, "/coins/"+url.PathEscape(name), nil, &out)
 	return out, err
 }
 
 func (c *walletClient) withdraw(ctx context.Context, member, coin, address, amount string) (walletWithdrawal, error) {
 	var out walletWithdrawal
-	err := c.call(ctx, http.MethodPost, "/internal/withdrawals", struct {
+	err := c.call(ctx, http.MethodPost, "/withdrawals", struct {
 		Member  string `json:"member"`
 		Coin    string `json:"coin"`
 		Address string `json:"address"`

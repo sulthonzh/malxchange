@@ -7,10 +7,12 @@ import (
 	"time"
 )
 
-// The one centralized set of member-facing English email templates
+// The one centralized set of member-facing English message templates
 // (ADR-0013 rule 4: backend member-facing text lives here, complete
 // sentences at single interpolation points with named parameters — no
-// copy assembled from fragments elsewhere).
+// copy assembled from fragments elsewhere). Email templates render
+// subject+body; the admin-activated Code channels (ticket #38) render
+// one plain-text message.
 
 var registerCodeTmpl = template.Must(template.New("register-code").Parse(
 	`Enter this verification code to finish creating your account: {{.Code}}.
@@ -31,6 +33,46 @@ func RegisterCodeEmail(code string, ttl time.Duration) (subject, body string, er
 		return "", "", fmt.Errorf("api: register code template: %w", err)
 	}
 	return "Your verification code", b.String(), nil
+}
+
+// codeTmplData interpolates every plain code message (phone and
+// Telegram channels).
+type codeTmplData struct {
+	Code      string
+	ExpiresIn string
+}
+
+var phoneCodeTmpl = template.Must(template.New("phone-code").Parse(
+	`Enter this verification code to bind your phone: {{.Code}}.
+
+The code expires in {{.ExpiresIn}} and can be used only once.
+
+If you did not try to bind a phone, you can ignore this message.`))
+
+// PhoneCodeMessage renders the phone-channel Verification code message
+// (sms and whatsapp drivers).
+func PhoneCodeMessage(code string, ttl time.Duration) (string, error) {
+	var b strings.Builder
+	if err := phoneCodeTmpl.Execute(&b, codeTmplData{Code: code, ExpiresIn: ttlWords(ttl)}); err != nil {
+		return "", fmt.Errorf("api: phone code template: %w", err)
+	}
+	return b.String(), nil
+}
+
+var telegramCodeTmpl = template.Must(template.New("telegram-code").Parse(
+	`Enter this verification code to confirm your Telegram: {{.Code}}.
+
+The code expires in {{.ExpiresIn}} and can be used only once.
+
+If you did not request it, you can ignore this message.`))
+
+// TelegramCodeMessage renders the Telegram Verification code message.
+func TelegramCodeMessage(code string, ttl time.Duration) (string, error) {
+	var b strings.Builder
+	if err := telegramCodeTmpl.Execute(&b, codeTmplData{Code: code, ExpiresIn: ttlWords(ttl)}); err != nil {
+		return "", fmt.Errorf("api: telegram code template: %w", err)
+	}
+	return b.String(), nil
 }
 
 // ttlWords renders a TTL as plain English words for template

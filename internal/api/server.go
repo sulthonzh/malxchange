@@ -19,6 +19,10 @@ func Run(ctx context.Context, d service.Deps) error {
 	member := &memberAPI{pool: d.Pool, env: env, mailer: mailer, ob: d.Outbox, log: d.Log}
 	member.RegisterMember(d.Public)
 
+	channels := &channelAPI{pool: d.Pool, env: env, log: d.Log}
+	channels.RegisterChannels(d.Public)
+	channels.RegisterChannelAdmin(d.Internal)
+
 	RegisterContent(d.Public, LoadContentConfig())
 
 	// Parallel-ticket registrars mount here as they land (market-data

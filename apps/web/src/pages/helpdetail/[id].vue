@@ -62,6 +62,8 @@ import { sanitizeCmsHtml } from '~/utils/sanitize'
 // degraded-admin-api case) renders the not-found sentence, never an
 // error.
 
+definePageMeta({ props: true })
+
 const props = defineProps<{ id: string }>()
 
 const { helpArticle, helpCategories } = useContent()

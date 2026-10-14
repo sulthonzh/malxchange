@@ -54,6 +54,8 @@ import { formatDate } from '~/utils/format'
 // readable — no route middleware; empty or unreachable renders the
 // empty state, never an error (content contract).
 
+definePageMeta({ props: true })
+
 const props = defineProps<{ cate: string }>()
 
 const pageSize = 10

@@ -58,6 +58,8 @@ import { sanitizeCmsHtml } from '~/utils/sanitize'
 // list). Anonymous-readable — no route middleware; a 404 (including the
 // degraded-admin-api case) renders the not-found sentence, never an error.
 
+definePageMeta({ props: true })
+
 const props = defineProps<{ id: string }>()
 
 const { announcement: fetchAnnouncement, announcements: fetchAnnouncements } = useContent()

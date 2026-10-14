@@ -1,9 +1,10 @@
 // Command admin-api serves the back office: Employee auth core (issue
 // #53 — TOTP login, absolute+idle sessions, lockout, the middleware
-// audit log, the installer bootstrap RPC); RBAC, Step-up, and the
-// permission catalog land with #54. The installer drives
-// `-bootstrap-first-employee` (one-time credentials on stdin) instead
-// of serving.
+// audit log, the installer bootstrap RPC) and RBAC (issue #54 — the
+// code-seeded permission catalog, per-request permission middleware,
+// seeded Roles, Employee/Role management, Step-up). The installer
+// drives `-bootstrap-first-employee` (one-time credentials on stdin)
+// instead of serving.
 package main
 
 import (

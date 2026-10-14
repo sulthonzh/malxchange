@@ -116,10 +116,15 @@ func newStack(t *testing.T) *itStack {
 	s := &itStack{pool: pool, env: env, t: t}
 
 	// The boot-harness wiring (internal/service/service.go): public mux
-	// at the root, internal mux stripped from /internal/*.
+	// at the root, internal mux stripped from /internal/*. Boot order
+	// mirrors admin.Run: the RBAC seeding (roles + catalog + matrix
+	// grants, idempotent) lands before the surface serves.
 	root := http.NewServeMux()
 	internal := http.NewServeMux()
 	srv := NewServer(pool, env, nil)
+	if err := srv.SeedRBAC(ctx); err != nil {
+		t.Fatalf("seed rbac: %v", err)
+	}
 	srv.RegisterPublic(root)
 	srv.RegisterInternal(internal)
 	// A guarded probe route: proves the restricted-session rule over the
@@ -251,6 +256,16 @@ func (s *itStack) fullyProvisioned(t *testing.T, email string) provisioned {
 	if status, raw := s.bootstrap(t, email, oneTime); status != http.StatusOK {
 		t.Fatalf("bootstrap: status %d body %s", status, raw)
 	}
+	return s.finishSetup(t, email, oneTime)
+}
+
+// finishSetup walks the forced first-login journey for an Employee
+// created with the one-time password: restricted login → password
+// rotation → re-login → TOTP enrollment + confirm. It is the tail of
+// the bootstrap journey and, unchanged, the journey a management-side
+// create (#54) puts every new Employee on.
+func (s *itStack) finishSetup(t *testing.T, email, oneTime string) provisioned {
+	t.Helper()
 	p := provisioned{Email: email, Password: oneTime}
 
 	// First login: one-time password, no TOTP yet → restricted session.

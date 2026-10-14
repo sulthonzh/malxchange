@@ -28,11 +28,20 @@ export interface AdminSection {
 
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Sections for Members, Finance, Compliance, Config, and
-// Audit grow with #57-#62; the Content section is #63 (support's
+// matrix. Members (#58, support's view/lock) and the Compliance KYC
+// queue landed with their registry entries, as did the Code channels'
+// Config section (#62); the Content section is #63 (support's
 // announcements and help center — categories and articles, publish
-// via the edit form's switch).
+// via the edit form's switch). Finance and Audit grow with #59-#61.
 export const adminSections: AdminSection[] = [
+  {
+    title: 'Members',
+    routes: [{ path: '/members', title: 'Members', permission: 'search:member' }],
+  },
+  {
+    title: 'Compliance',
+    routes: [{ path: '/kyc', title: 'KYC review', permission: 'view:kyc' }],
+  },
   {
     title: 'System',
     routes: [
@@ -47,6 +56,14 @@ export const adminSections: AdminSection[] = [
       { path: '/content/help-categories', title: 'Help categories', permission: 'view:help-category' },
       { path: '/content/help-articles', title: 'Help articles', permission: 'view:help-article' },
     ],
+  },
+  {
+    // Config (#62): the Code channel registry — status list, activation
+    // with per-driver credentials (Step-up on the save), deactivation.
+    // Super-admin's alone in the matrix; email is always on and has no
+    // entry here.
+    title: 'Config',
+    routes: [{ path: '/config/channels', title: 'Code channels', permission: 'view:channel' }],
   },
 ]
 

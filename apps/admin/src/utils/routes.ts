@@ -10,7 +10,7 @@
 //
 // Entries appear here as their slices land; permission strings come
 // only from the registry (the catalog is read-only — no UI-invented
-// strings). The Employee/Role management pages are slice #57's.
+// strings). System and Audit are slice #57's; Config arrived with #62.
 
 export interface AdminRoute {
   /** History-mode app route the entry navigates to. */

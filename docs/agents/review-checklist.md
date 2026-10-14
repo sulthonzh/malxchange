@@ -120,3 +120,33 @@ pattern. Reviewers grep the marker before flagging the exception site;
 an unmarked waiver reads as a violation and burns a review cycle.
 (Symptom: the #24 review flagged `Number()` in KlineChart although a
 waiver comment sat three lines below it.)
+
+## Client paths are suffix paths
+
+`apps/web`'s `useApi` and the admin e2e's `MEMBER_API` carry the `/api`
+prefix in the base URL, so the path argument is the suffix (`/uc/kyc`,
+`/announcements`) — a literal `/api/...` path doubles the prefix and
+404s on `/api/api/...`, which no unit test sees because only the browser
+resolves the URL. Enforced by `make lint`.
+(Symptom: spec #25's e2e found every member content page rendering its
+empty state, and the admin e2e's member leg 404ing.)
+
+## Nuxt param pages opt into route-params-as-props
+
+A page that reads route params via `defineProps<{ id }>` must also
+declare `definePageMeta({ props: true })`; without it the prop binds
+`undefined` and the page fetches `/undefined`. Page-mount unit tests
+pass props directly, so only the filesystem check
+(`apps/web/tests/param-pages-props.spec.ts`) or a real browser sees the
+failure. Enforced by that spec.
+(Symptom: announcement and help detail pages fetched
+`/api/announcements/undefined`.)
+
+## Compose overlays must parse
+
+`docker compose ... config -q` over both overlays runs in `make lint`:
+a duplicate env key or malformed service makes compose refuse the whole
+file, which otherwise only surfaces when an e2e or installer target
+tries to boot the stack.
+(Symptom: a duplicated `MAL_ADMIN_WALLET_BASE_URL` from a union merge
+blocked `make admin-e2e` entirely.)

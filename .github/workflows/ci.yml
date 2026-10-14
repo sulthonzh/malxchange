@@ -96,3 +96,21 @@ jobs:
             rpk topic list 2>&1 | grep -q "SASL is required"
       - name: Chain E2E (broken seams are t.Skip'd in the test files)
         run: make test-chain-e2e
+
+  admin-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: apps/admin/.nvmrc
+          cache: npm
+          cache-dependency-path: apps/admin/package-lock.json
+      - name: Env file and Playwright browser
+        run: |
+          sed -e "s/replace-me/$(openssl rand -hex 16)/g" deploy/env.example > deploy/.env
+          cd apps/admin
+          npm ci
+          npx playwright install --with-deps chromium
+      - name: Admin E2E over the compose stack (fresh database every run)
+        run: make admin-e2e

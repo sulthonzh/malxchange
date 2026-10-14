@@ -1,10 +1,12 @@
-// Package admin is the admin-api service surface: Employee auth core
-// (issue #53, ADR-0012) — login/logout over an opaque httpOnly cookie
+// Package admin is the admin-api service surface (ADR-0012): Employee
+// auth core (issue #53) — login/logout over an opaque httpOnly cookie
 // with the 12 h absolute + 30 min idle session policy, the 5-failures
 // lockout, forced first-login rotation + TOTP enrollment, the
 // middleware-written Audit log, and the installer's first-Employee
-// bootstrap RPC. RBAC enforcement, the permission catalog, role
-// seeding, and Step-up land with #54 on top of these seams.
+// bootstrap RPC — plus the RBAC machinery and the Employee/Role
+// management surface (issue #54): the code-seeded permission catalog
+// and matrix grants, per-request permission middleware with
+// grant-cache invalidation, Step-up, and the management guards.
 package admin
 
 import (

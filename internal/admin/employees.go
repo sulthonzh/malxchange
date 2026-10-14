@@ -87,8 +87,8 @@ func (s *Server) employeeByID(ctx context.Context, id string) (Employee, error) 
 
 // CreateFirstEmployee backs the installer's bootstrap RPC (ADR-0007):
 // it refuses once any Employee exists, guarantees the super-admin Role
-// the first Employee must hold (full role seeding is #54 — this is the
-// single row the FK demands), and stores the one-time password only as
+// the first Employee must hold (boot seeding owns the Role rows; this
+// is the single one the FK demands), and stores the one-time password only as
 // its argon2id hash. The exists-check and the insert share one
 // transaction behind an advisory lock, so concurrent bootstrap calls
 // cannot both pass the check.
@@ -182,7 +182,8 @@ func (s *Server) StageTOTP(ctx context.Context, employeeID, secret string) error
 
 // ConfirmTOTP activates the staged binding when code verifies. A stale
 // confirmation is refused: confirming needs a staged secret, and a
-// confirmed binding is replaced only through the admin reset (#54).
+// confirmed binding is replaced only through the admin reset
+// (reset:employee-totp).
 func (s *Server) ConfirmTOTP(ctx context.Context, employeeID, code string, now time.Time) (before, after Employee, err error) {
 	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
 		row := tx.QueryRow(ctx,

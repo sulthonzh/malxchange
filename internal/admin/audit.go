@@ -14,9 +14,10 @@ import (
 	"strings"
 )
 
-// Audit action strings are 'verb:resource' (ADR-0012). The verbs are
-// the vocabulary the #54 permission catalog seeds from — keep new ones
-// verb-first and resource-singular.
+// Audit action strings are 'verb:resource' (ADR-0012): verb-first and
+// resource-singular, the same vocabulary the permission catalog
+// (registry.go) seeds from — a mutating endpoint's audited action IS
+// its permission string. Keep new ones in that shape.
 const (
 	ActionLogin          = "login:employee"  // successful sign-in
 	ActionLoginFailed    = "login:failed"    // refused: wrong credentials, unknown email, disabled
@@ -25,7 +26,11 @@ const (
 	ActionRotatePassword = "rotate:password" // self password change (forced first-login or voluntary)
 	ActionEnrollTOTP     = "enroll:totp"     // TOTP enrollment begin (secret staged)
 	ActionBindTOTP       = "bind:totp"       // TOTP enrollment confirm (binding activated)
-	ActionCreateEmployee = "create:employee" // bootstrap: the first super-admin (system actor)
+	// The first super-admin from the installer (system actor); the
+	// management endpoint's rows share the string with a human actor.
+	ActionCreateEmployee = PermCreateEmployee
+	ActionGrantRole      = "grant:role"  // grant editor: one permission granted to a Role
+	ActionRevokeRole     = "revoke:role" // grant editor: one permission revoked from a Role
 )
 
 // systemActor marks rows the installer bootstrap writes (ADR-0012's

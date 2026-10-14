@@ -18,8 +18,8 @@ import (
 
 // RegisterPublic mounts the Employee surface (paths stay unprefixed:
 // this mux serves only the admin surface, like the member api's
-// /api/uc/* namespace — later tickets add /api/employees, /api/roles,
-// ... alongside these).
+// /api/uc/* namespace). The permissioned management endpoints mount
+// from the registry — the single seam later tickets extend.
 func (s *Server) RegisterPublic(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", s.audited(ActionLogin, s.handleLogin))
 	mux.HandleFunc("POST /api/logout", s.withSession(s.audited(ActionLogout, s.handleLogout)))
@@ -27,6 +27,7 @@ func (s *Server) RegisterPublic(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/password", s.withSession(s.audited(ActionRotatePassword, s.handleRotatePassword)))
 	mux.HandleFunc("POST /api/totp/enroll", s.withSession(s.audited(ActionEnrollTOTP, s.handleEnrollTOTP)))
 	mux.HandleFunc("POST /api/totp/confirm", s.withSession(s.audited(ActionBindTOTP, s.handleConfirmTOTP)))
+	s.RegisterEndpoints(mux)
 }
 
 type loginRequest struct {
@@ -35,8 +36,8 @@ type loginRequest struct {
 	Code     string `json:"code"`
 }
 
-// employeePublic is the login/me identity view; the live permission
-// set joins it in #54.
+// employeePublic is the login/me identity view; loginResponse joins
+// the live permission set (the sidebar's source of truth).
 type employeePublic struct {
 	ID    string `json:"id"`
 	Email string `json:"email"`
@@ -44,9 +45,10 @@ type employeePublic struct {
 }
 
 type loginResponse struct {
-	Employee   employeePublic `json:"employee"`
-	MustRotate bool           `json:"must_rotate"`
-	TOTPBound  bool           `json:"totp_bound"`
+	Employee    employeePublic `json:"employee"`
+	MustRotate  bool           `json:"must_rotate"`
+	TOTPBound   bool           `json:"totp_bound"`
+	Permissions []string       `json:"permissions"` // the caller's live grant set from their single Role (#54)
 }
 
 // handleLogin answers only email + password + a valid TOTP code — the
@@ -145,9 +147,10 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	setSessionCookie(w, token)
 	writeJSON(w, http.StatusOK, loginResponse{
-		Employee:   employeePublic{ID: emp.ID, Email: emp.Email, Role: s.roleName(r.Context(), emp)},
-		MustRotate: emp.MustRotate,
-		TOTPBound:  emp.TOTPSecret != "",
+		Employee:    employeePublic{ID: emp.ID, Email: emp.Email, Role: s.roleName(r.Context(), emp)},
+		MustRotate:  emp.MustRotate,
+		TOTPBound:   emp.TOTPSecret != "",
+		Permissions: s.permissionList(r.Context(), emp.RoleID),
 	})
 }
 
@@ -162,7 +165,7 @@ func auditRefusal(entry *AuditEntry, action string) {
 }
 
 // roleName resolves the Role name for identity views (one join, tiny;
-// the permission machinery lands with #54).
+// grants resolve through grantsFor).
 func (s *Server) roleName(ctx context.Context, emp Employee) string {
 	var name string
 	if err := s.pool.QueryRow(ctx,
@@ -189,8 +192,9 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleMe(w http.ResponseWriter, r *http.Request) {
 	emp, _ := employeeFrom(r.Context())
 	writeJSON(w, http.StatusOK, loginResponse{
-		Employee:   employeePublic{ID: emp.ID, Email: emp.Email, Role: s.roleName(r.Context(), emp)},
-		MustRotate: emp.MustRotate,
-		TOTPBound:  emp.TOTPSecret != "",
+		Employee:    employeePublic{ID: emp.ID, Email: emp.Email, Role: s.roleName(r.Context(), emp)},
+		MustRotate:  emp.MustRotate,
+		TOTPBound:   emp.TOTPSecret != "",
+		Permissions: s.permissionList(r.Context(), emp.RoleID),
 	})
 }

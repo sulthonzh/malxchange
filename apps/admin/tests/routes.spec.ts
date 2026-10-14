@@ -21,6 +21,12 @@ describe('visibleRoutes', () => {
       'view:role',
       'edit:role',
       'delete:role',
+      // Wallet Ops (#60): the Operations section rides the same strings
+      // the admin-api registry gates its endpoints on.
+      'view:ops',
+      'view:hot-transfer',
+      'view:incident',
+      'view:reconcile',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })

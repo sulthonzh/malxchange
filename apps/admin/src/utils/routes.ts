@@ -38,6 +38,17 @@ export const adminSections: AdminSection[] = [
       { path: '/system/roles', title: 'Roles', permission: 'view:role' },
     ],
   },
+  {
+    // Wallet Ops (issue #60): custody + operations over wallet's
+    // internal RPCs — finance + super-admin surfaces.
+    title: 'Operations',
+    routes: [
+      { path: '/operations', title: 'Wallet Ops', permission: 'view:ops' },
+      { path: '/operations/transfers', title: 'Transfers', permission: 'view:hot-transfer' },
+      { path: '/operations/incidents', title: 'Incidents', permission: 'view:incident' },
+      { path: '/operations/reconcile', title: 'Reconcile', permission: 'view:reconcile' },
+    ],
+  },
 ]
 
 /** Sections whose entries the permission set admits; emptied sections drop. */

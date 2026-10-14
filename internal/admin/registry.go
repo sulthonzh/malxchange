@@ -24,6 +24,23 @@ const (
 	PermViewRole              = "view:role"               // GET    /api/roles
 	PermEditRole              = "edit:role"               // POST   /api/roles/{id}/grants
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
+
+	// Wallet Ops (ticket #60): the custody + operations surface over
+	// wallet's internal RPCs (ADR-0008). Finance + super-admin per the
+	// ADR-0012 matrix; Step-up where the matrix demands it (hot→cold
+	// creation, every retry).
+	PermViewOps            = "view:ops"             // GET    /api/ops (the dashboard summary)
+	PermViewReconcile      = "view:reconcile"       // GET    /api/ops/reconcile
+	PermViewIncident       = "view:incident"        // GET    /api/incidents
+	PermResolveIncident    = "resolve:incident"     // POST   /api/incidents/{id}/resolve
+	PermPauseSweep         = "pause:sweep"          // POST   /api/coins/{name}/sweep-pause
+	PermViewSweep          = "view:sweep"           // GET    /api/sweeps
+	PermRetrySweep         = "retry:sweep"          // POST   /api/sweeps/{id}/retry (Step-up)
+	PermViewHotTransfer    = "view:hot-transfer"    // GET    /api/hot-transfers
+	PermCreateHotTransfer  = "create:hot-transfer"  // POST   /api/hot-transfers (Step-up)
+	PermRetryHotTransfer   = "retry:hot-transfer"   // POST   /api/hot-transfers/{id}/retry (Step-up)
+	PermViewColdTransfer   = "view:cold-transfer"   // GET    /api/cold-transfers
+	PermRecordColdTransfer = "record:cold-transfer" // POST   /api/cold-transfers
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -53,6 +70,22 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/roles", Perm: PermViewRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListRoles},
 	{Method: http.MethodPost, Path: "/api/roles/{id}/grants", Perm: PermEditRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleEditRoleGrants},
 	{Method: http.MethodDelete, Path: "/api/roles/{id}", Perm: PermDeleteRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeleteRole},
+
+	// Wallet Ops (ticket #60): finance + super-admin. Mutating entries
+	// are audit-logged by construction with action == permission; the
+	// Step-up entries are hot→cold creation and the three retries.
+	{Method: http.MethodGet, Path: "/api/ops", Perm: PermViewOps, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleOpsSummary},
+	{Method: http.MethodGet, Path: "/api/ops/reconcile", Perm: PermViewReconcile, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleOpsReconcile},
+	{Method: http.MethodGet, Path: "/api/incidents", Perm: PermViewIncident, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListIncidents},
+	{Method: http.MethodPost, Path: "/api/incidents/{id}/resolve", Perm: PermResolveIncident, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleResolveIncident},
+	{Method: http.MethodPost, Path: "/api/coins/{name}/sweep-pause", Perm: PermPauseSweep, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleSweepPause},
+	{Method: http.MethodGet, Path: "/api/sweeps", Perm: PermViewSweep, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListSweeps},
+	{Method: http.MethodPost, Path: "/api/sweeps/{id}/retry", Perm: PermRetrySweep, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleSweepRetry},
+	{Method: http.MethodGet, Path: "/api/hot-transfers", Perm: PermViewHotTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListHotTransfers},
+	{Method: http.MethodPost, Path: "/api/hot-transfers", Perm: PermCreateHotTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleCreateHotTransfer},
+	{Method: http.MethodPost, Path: "/api/hot-transfers/{id}/retry", Perm: PermRetryHotTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleHotTransferRetry},
+	{Method: http.MethodGet, Path: "/api/cold-transfers", Perm: PermViewColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListColdTransfers},
+	{Method: http.MethodPost, Path: "/api/cold-transfers", Perm: PermRecordColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleRecordColdTransfer},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

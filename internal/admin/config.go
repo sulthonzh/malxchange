@@ -37,6 +37,8 @@ type AdminEnv struct {
 	SessionIdle      time.Duration // inactivity window, slid on every authenticated use (ADR-0012: 30 min)
 	LockoutThreshold int           // failed logins inside LockoutWindow before the email locks
 	LockoutWindow    time.Duration // failures older than this stop counting; the lock lifts with them
+	WalletBaseURL    string        // wallet internal-RPC origin (ticket #60; default http://wallet:8080/internal)
+	WalletTimeout    time.Duration // one proxied wallet call's budget (default 5s)
 }
 
 // SessionPolicy shapes the shared auth package's expiry arithmetic:
@@ -65,6 +67,8 @@ func loadAdminEnv() *AdminEnv {
 		SessionIdle:      envDuration("MAL_ADMIN_SESSION_IDLE", 30*time.Minute),
 		LockoutThreshold: LockoutThreshold,
 		LockoutWindow:    envDuration("MAL_ADMIN_LOCKOUT_WINDOW", 15*time.Minute),
+		WalletBaseURL:    config.EnvDefault("MAL_ADMIN_WALLET_BASE_URL", "http://wallet:8080/internal"),
+		WalletTimeout:    envDuration("MAL_ADMIN_WALLET_TIMEOUT", 5*time.Second),
 	}
 }
 

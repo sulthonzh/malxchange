@@ -37,6 +37,10 @@ func Run(ctx context.Context, d service.Deps) error {
 	// only writer. The freeze guard and the 5s live-apply stay the
 	// engine's; this RPC just edits the row.
 	RegisterAdminRPC(d.Internal, &AdminRPC{DB: d.Pool, Log: d.Log})
+	// The member-order seam api fronts for GET /api/uc/orders/current
+	// and /history (ticket #41); without this mount those proxies hit an
+	// unmounted /internal route in production (ticket #65).
+	RegisterRPC(d.Internal, &RPC{DB: d.Pool})
 
 	errCh := make(chan error, 3)
 	go func() { errCh <- ConsumeCommandTopic(ctx, eng, consumer) }()

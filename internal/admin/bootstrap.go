@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/syaikhipin/malxchange/internal/config"
 )
@@ -116,10 +117,18 @@ func RunBootstrapClient(ctx context.Context) int {
 		return 2
 	}
 	req2.Header.Set("Content-Type", "application/json")
-	resp, err := http.DefaultClient.Do(req2)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, "bootstrap: admin-api internal RPC unreachable:", err)
-		return 1
+	var resp *http.Response
+	for i := range 60 {
+		var err error
+		resp, err = http.DefaultClient.Do(req2.Clone(ctx))
+		if err == nil {
+			break
+		}
+		if i == 59 {
+			fmt.Fprintln(os.Stderr, "bootstrap: admin-api internal RPC unreachable:", err)
+			return 1
+		}
+		time.Sleep(time.Second)
 	}
 	defer resp.Body.Close()
 	switch resp.StatusCode {

@@ -21,6 +21,11 @@ describe('visibleRoutes', () => {
       'view:role',
       'edit:role',
       'delete:role',
+      'view:coin',
+      'edit:coin',
+      'view:market',
+      'edit:market',
+      'view:engine',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })
@@ -29,6 +34,14 @@ describe('visibleRoutes', () => {
     const sections = visibleRoutes(adminSections, ['view:employee'])
     expect(sections).toHaveLength(1)
     expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/system/employees'])
+  })
+
+  it('offers the engine status page to any Role holding only view:engine', () => {
+    // ADR-0012: the engine status view is the one surface all four
+    // Roles see — support's grant set alone still lists it.
+    const sections = visibleRoutes(adminSections, ['view:engine'])
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/ops/engine'])
   })
 
   it('renders nothing for a permission set outside the table', () => {

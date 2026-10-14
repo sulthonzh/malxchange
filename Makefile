@@ -12,7 +12,7 @@ COMPOSE_TEST = $(COMPOSE) -f deploy/compose.test.yaml
 # they boot their own stack with whatever they seed).
 ENV_GUARD = @test -f deploy/.env || { echo "deploy/.env missing (worktree checkout?) — cp it from the primary checkout; a seeded one has random creds that won't match the running dev stack" >&2; exit 1; }
 
-.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e test-profile-up test-profile-down test-profile-probe it-db-leftovers lint build-images installer-check hooks
+.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e admin-e2e test-profile-up test-profile-down test-profile-probe it-db-leftovers lint build-images installer-check hooks
 
 help:
 	@echo "dev-up            start postgres+redpanda (loopback ports) for local dev"
@@ -22,6 +22,7 @@ help:
 	@echo "test-integration  integration tests against dev infra (boot it first)"
 	@echo "test-chain-e2e    chain E2E against the test profile (boot it first)"
 	@echo "member-e2e        Playwright member journeys through the Caddy edge (issue #51)"
+	@echo "admin-e2e         Playwright admin journeys through the Caddy edge (issue #56)"
 	@echo "test-profile-up   boot the test profile (simnet chains + EVM devnet + tronstub)"
 	@echo "test-profile-down stop the test profile"
 	@echo "test-profile-probe health-check the chain nodes of the test profile"
@@ -47,6 +48,35 @@ member-e2e:
 	@set -a; . deploy/.env; set +a; \
 	$(COMPOSE_TEST) --profile test --profile e2e up -d --build; \
 	cd apps/web && npx playwright test
+
+# Admin E2E (spec #25, issue #56): boots the test+e2e profiles (the
+# admin app + admin-api behind the Caddy edge) and runs the Playwright
+# suites in apps/admin. The browser reaches the app through the edge at
+# https://admin.exchange.example.com (mapped inside Chromium), so the
+# REST surface is same-origin exactly as in production. The first
+# Employee can only ever be bootstrapped once per database: the first
+# run creates it here through the installer's one-time-credential RPC
+# and hands the password to the suite, which rotates it in the browser
+# and stores the rotated credentials in
+# apps/admin/e2e/.admin-state.json (gitignored) for later runs.
+admin-e2e:
+	$(ENV_GUARD)
+	@set -a; . deploy/.env; set +a; \
+	$(COMPOSE_TEST) --profile test --profile e2e up -d --build; \
+	if [ -z "$${E2E_BOOTSTRAP_PASSWORD:-}" ] && [ ! -f apps/admin/e2e/.admin-state.json ]; then \
+	  boot_email="$${MAL_ADMIN_BOOTSTRAP_EMAIL:-admin@exchange.example.com}"; \
+	  boot_pw=$$(openssl rand -hex 12); \
+	  boot_rc=0; \
+	  boot_out="$$(printf '{"email":"%s","password":"%s"}' "$$boot_email" "$$boot_pw" | $(COMPOSE_TEST) exec -T admin-api /app -bootstrap-first-employee 2>&1)" || boot_rc=$$?; \
+	  case "$$boot_out" in \
+	    bootstrapped*) export E2E_BOOTSTRAP_EMAIL="$$boot_email" E2E_BOOTSTRAP_PASSWORD="$$boot_pw"; \
+	      echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey";; \
+	    exists*) echo "the first Employee already exists but apps/admin/e2e/.admin-state.json is missing:" >&2; \
+	       echo "recreate the stack volumes, or export E2E_BOOTSTRAP_EMAIL/E2E_BOOTSTRAP_PASSWORD" >&2; exit 1;; \
+	    *) echo "bootstrap RPC failed (rc=$$boot_rc): $$boot_out" >&2; exit 1;; \
+	  esac; \
+	fi; \
+	cd apps/admin && npx playwright test
 
 # Health-check the test-profile chain nodes: each must answer its
 # canonical "where am I" RPC. Run before debugging anything chain-side —

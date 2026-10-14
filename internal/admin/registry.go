@@ -24,6 +24,24 @@ const (
 	PermViewRole              = "view:role"               // GET    /api/roles
 	PermEditRole              = "edit:role"               // POST   /api/roles/{id}/grants
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
+
+	// Content (ticket #63): support's alone in the matrix — the
+	// ADR-0012 resolution gives announcements/help to support and to
+	// nobody else (finance/compliance are refused; super-admin has no
+	// content verbs). Publishing is an edit of the published flag, not
+	// a workflow of its own.
+	PermViewAnnouncement   = "view:announcement"    // GET    /api/announcements
+	PermCreateAnnouncement = "create:announcement"  // POST   /api/announcements
+	PermEditAnnouncement   = "edit:announcement"    // PUT    /api/announcements/{id}
+	PermDeleteAnnouncement = "delete:announcement"  // DELETE /api/announcements/{id}
+	PermViewHelpCategory   = "view:help-category"   // GET    /api/help/categories
+	PermCreateHelpCategory = "create:help-category" // POST  /api/help/categories
+	PermEditHelpCategory   = "edit:help-category"   // PUT    /api/help/categories/{id}
+	PermDeleteHelpCategory = "delete:help-category" // DELETE /api/help/categories/{id}
+	PermViewHelpArticle    = "view:help-article"    // GET    /api/help/articles
+	PermCreateHelpArticle  = "create:help-article"  // POST   /api/help/articles
+	PermEditHelpArticle    = "edit:help-article"    // PUT    /api/help/articles/{id}
+	PermDeleteHelpArticle  = "delete:help-article"  // DELETE /api/help/articles/{id}
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -53,6 +71,22 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/roles", Perm: PermViewRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListRoles},
 	{Method: http.MethodPost, Path: "/api/roles/{id}/grants", Perm: PermEditRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleEditRoleGrants},
 	{Method: http.MethodDelete, Path: "/api/roles/{id}", Perm: PermDeleteRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeleteRole},
+
+	// Content (ticket #63): support's alone in the matrix (ADR-0012).
+	// Mutating endpoints are audited by construction — the middleware's
+	// action is the permission string.
+	{Method: http.MethodGet, Path: "/api/announcements", Perm: PermViewAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleListAnnouncements},
+	{Method: http.MethodPost, Path: "/api/announcements", Perm: PermCreateAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateAnnouncement},
+	{Method: http.MethodPut, Path: "/api/announcements/{id}", Perm: PermEditAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditAnnouncement},
+	{Method: http.MethodDelete, Path: "/api/announcements/{id}", Perm: PermDeleteAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteAnnouncement},
+	{Method: http.MethodGet, Path: "/api/help/categories", Perm: PermViewHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleListHelpCategories},
+	{Method: http.MethodPost, Path: "/api/help/categories", Perm: PermCreateHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateHelpCategory},
+	{Method: http.MethodPut, Path: "/api/help/categories/{id}", Perm: PermEditHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditHelpCategory},
+	{Method: http.MethodDelete, Path: "/api/help/categories/{id}", Perm: PermDeleteHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteHelpCategory},
+	{Method: http.MethodGet, Path: "/api/help/articles", Perm: PermViewHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleListHelpArticles},
+	{Method: http.MethodPost, Path: "/api/help/articles", Perm: PermCreateHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateHelpArticle},
+	{Method: http.MethodPut, Path: "/api/help/articles/{id}", Perm: PermEditHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditHelpArticle},
+	{Method: http.MethodDelete, Path: "/api/help/articles/{id}", Perm: PermDeleteHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteHelpArticle},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

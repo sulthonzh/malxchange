@@ -28,14 +28,24 @@ export interface AdminSection {
 
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Sections for Members, Finance, Compliance, Content, Config,
-// and Audit grow with #57-#63.
+// matrix. Sections for Members, Finance, Compliance, Config, and
+// Audit grow with #57-#62; the Content section is #63 (support's
+// announcements and help center — categories and articles, publish
+// via the edit form's switch).
 export const adminSections: AdminSection[] = [
   {
     title: 'System',
     routes: [
       { path: '/system/employees', title: 'Employees', permission: 'view:employee' },
       { path: '/system/roles', title: 'Roles', permission: 'view:role' },
+    ],
+  },
+  {
+    title: 'Content',
+    routes: [
+      { path: '/content/announcements', title: 'Announcements', permission: 'view:announcement' },
+      { path: '/content/help-categories', title: 'Help categories', permission: 'view:help-category' },
+      { path: '/content/help-articles', title: 'Help articles', permission: 'view:help-article' },
     ],
   },
 ]

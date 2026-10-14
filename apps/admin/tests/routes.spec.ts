@@ -9,7 +9,7 @@ import { adminSections, visibleRoutes } from '../src/utils/routes'
 // UI-invented strings exist.
 
 describe('visibleRoutes', () => {
-  it('keeps every section for the full super-admin permission set', () => {
+  it('keeps every section for the full route-table permission set', () => {
     const permissions = [
       'view:employee',
       'create:employee',
@@ -21,6 +21,9 @@ describe('visibleRoutes', () => {
       'view:role',
       'edit:role',
       'delete:role',
+      'view:announcement',
+      'view:help-category',
+      'view:help-article',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })
@@ -32,9 +35,8 @@ describe('visibleRoutes', () => {
   })
 
   it('renders nothing for a permission set outside the table', () => {
-    // The support Role today: its ADR-0012 matrix grants (member
-    // view/lock, content) belong to endpoints later slices own — none
-    // exist in the registry yet, so its live set intersects emptily.
+    // A set no entry keys on (e.g. an audit-log-only Role) intersects
+    // the table emptily — nothing renders.
     expect(visibleRoutes(adminSections, [])).toEqual([])
   })
 

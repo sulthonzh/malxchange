@@ -44,7 +44,7 @@ export function useContent() {
   return {
     announcements(pageNo: number, pageSize: number): Promise<ContentPage> {
       return apiFetch<ContentPage>(
-        `/api/announcements?${new URLSearchParams({
+        `/announcements?${new URLSearchParams({
           pageNo: String(pageNo),
           pageSize: String(pageSize),
         })}`,
@@ -52,16 +52,16 @@ export function useContent() {
     },
 
     announcement(id: string): Promise<AnnouncementDetail> {
-      return apiFetch<AnnouncementDetail>(`/api/announcements/${encodeURIComponent(id)}`)
+      return apiFetch<AnnouncementDetail>(`/announcements/${encodeURIComponent(id)}`)
     },
 
     helpCategories(): Promise<HelpCategorySummary[]> {
-      return apiFetch<HelpCategorySummary[]>('/api/help')
+      return apiFetch<HelpCategorySummary[]>('/help')
     },
 
     helpCategory(cate: string, pageNo: number, pageSize: number): Promise<ContentPage> {
       return apiFetch<ContentPage>(
-        `/api/help/categories/${encodeURIComponent(cate)}?${new URLSearchParams({
+        `/help/categories/${encodeURIComponent(cate)}?${new URLSearchParams({
           pageNo: String(pageNo),
           pageSize: String(pageSize),
         })}`,
@@ -69,7 +69,7 @@ export function useContent() {
     },
 
     helpArticle(id: string): Promise<HelpArticle> {
-      return apiFetch<HelpArticle>(`/api/help/articles/${encodeURIComponent(id)}`)
+      return apiFetch<HelpArticle>(`/help/articles/${encodeURIComponent(id)}`)
     },
   }
 }

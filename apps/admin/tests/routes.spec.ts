@@ -26,6 +26,12 @@ describe('visibleRoutes', () => {
       'view:market',
       'edit:market',
       'view:engine',
+      // Wallet Ops (#60): the Operations section rides the same strings
+      // the admin-api registry gates its endpoints on.
+      'view:ops',
+      'view:hot-transfer',
+      'view:incident',
+      'view:reconcile',
       // #58's read side: super-admin sees everything the table offers.
       'search:member',
       'view:member',

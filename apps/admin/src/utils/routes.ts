@@ -49,6 +49,21 @@ export const adminSections: AdminSection[] = [
     ],
   },
   {
+    // Wallet Ops (issue #60): custody + operations over wallet's
+    // internal RPCs — finance + super-admin surfaces.
+    title: 'Operations',
+    routes: [
+      { path: '/operations', title: 'Wallet Ops', permission: 'view:ops' },
+      { path: '/operations/transfers', title: 'Transfers', permission: 'view:hot-transfer' },
+      { path: '/operations/incidents', title: 'Incidents', permission: 'view:incident' },
+      { path: '/operations/reconcile', title: 'Reconcile', permission: 'view:reconcile' },
+    ],
+  },
+  {
+    // Config (#62): the Code channel registry — status list, activation
+    // with per-driver credentials (Step-up on the save), deactivation.
+    // Super-admin's alone in the matrix; email is always on and has no
+    // entry here.
     title: 'Config',
     routes: [
       { path: '/config/coins', title: 'Coins', permission: 'view:coin' },

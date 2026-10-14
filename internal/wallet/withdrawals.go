@@ -277,12 +277,12 @@ func ListWithdrawals(ctx context.Context, db DB, member, state string, limit int
 	var out []WithdrawalView
 	for rows.Next() {
 		var v WithdrawalView
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&v.ID, &v.Coin, &v.Member, &v.Address, &v.Amount, &v.Fee, &v.Net,
 			&v.State, &v.TxID, &v.Error, &created); err != nil {
 			return nil, err
 		}
-		v.CreatedAt = string(created)
+		v.CreatedAt = created.UTC().Format(PgTimestampText)
 		out = append(out, v)
 	}
 	return out, rows.Err()

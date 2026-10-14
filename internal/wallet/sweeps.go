@@ -153,14 +153,14 @@ func ListSweeps(ctx context.Context, db DB, coin, state string, limit int) ([]ma
 	var out []map[string]any
 	for rows.Next() {
 		var id, c, addr, amount, fee, funding, txid, state, errMsg string
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&id, &c, &addr, &amount, &fee, &funding, &txid, &state, &errMsg, &created); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
 			"id": id, "coin": c, "address": addr, "amount": amount, "fee": fee,
 			"fundingTxid": funding, "txid": txid, "state": state, "error": errMsg,
-			"createdAt": string(created),
+			"createdAt": created.UTC().Format(PgTimestampText),
 		})
 	}
 	return out, rows.Err()
@@ -270,13 +270,14 @@ func ListHotTransfers(ctx context.Context, db DB, coin string) ([]map[string]any
 	var out []map[string]any
 	for rows.Next() {
 		var id, c, amount, addr, state, txid, errMsg, actor string
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&id, &c, &amount, &addr, &state, &txid, &errMsg, &actor, &created); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
 			"id": id, "coin": c, "amount": amount, "address": addr, "state": state,
-			"txid": txid, "error": errMsg, "actor": actor, "createdAt": string(created),
+			"txid": txid, "error": errMsg, "actor": actor,
+			"createdAt": created.UTC().Format(PgTimestampText),
 		})
 	}
 	return out, rows.Err()
@@ -309,12 +310,13 @@ func ListColdTransfers(ctx context.Context, db DB, coin string) ([]map[string]an
 	var out []map[string]any
 	for rows.Next() {
 		var id, c, amount, txid, actor string
-		var noted []byte
+		var noted time.Time
 		if err := rows.Scan(&id, &c, &amount, &txid, &actor, &noted); err != nil {
 			return nil, err
 		}
 		out = append(out, map[string]any{
-			"id": id, "coin": c, "amount": amount, "txid": txid, "actor": actor, "notedAt": string(noted),
+			"id": id, "coin": c, "amount": amount, "txid": txid, "actor": actor,
+			"notedAt": noted.UTC().Format(PgTimestampText),
 		})
 	}
 	return out, rows.Err()

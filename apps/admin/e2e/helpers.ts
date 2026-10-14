@@ -5,7 +5,8 @@
 // (the internal RPC refuses forever after), so the first run rotates
 // the one-time credential in the browser and persists the rotated
 // credentials here (gitignored); later runs sign in with them.
-import type { Page } from '@playwright/test'
+import { createServer, type Server } from 'node:http'
+import type { APIRequestContext, Page } from '@playwright/test'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -105,4 +106,333 @@ export async function totpCode(secret: string, at = Date.now()): Promise<string>
     ((signature[offset + 2]! & 0xff) << 8) |
     (signature[offset + 3]! & 0xff)
   return String(value % 1000000).padStart(6, '0')
+}
+
+// ---- issue #64: the full-stack black-box proof helpers ----
+
+
+/** The member-side seam (spec #24 stack): Node-side against the test
+ * profile's published ports, because request contexts resolve DNS for
+ * real and cannot use the Chromium host mapping pageApi relies on. */
+export const MEMBER_API = process.env.E2E_API_URL ?? 'http://127.0.0.1:18080/api'
+export const MAILSINK = process.env.E2E_MAIL_URL ?? 'http://127.0.0.1:18025'
+
+export interface MemberTicket {
+  token: string
+  member: { id: string }
+}
+
+/** Registers one member through the real member surface (emailed code
+ * from the compose mail sink), returning the session ticket. */
+export async function registerMember(
+  request: APIRequestContext,
+  email: string,
+  password: string,
+): Promise<MemberTicket> {
+  await request.post(`${MEMBER_API}/uc/register/code`, { data: { email } })
+  const code = await mailedCode(email, request)
+  const res = await request.post(`${MEMBER_API}/uc/register`, { data: { email, code, password } })
+  if (!res.ok()) {
+    throw new Error(`member register ${res.status()}: ${await res.text()}`)
+  }
+  return (await res.json()) as MemberTicket
+}
+
+/** One authenticated member call over HTTP. */
+export async function memberCall(
+  request: APIRequestContext,
+  token: string,
+  path: string,
+  body?: unknown,
+  method: 'GET' | 'POST' | 'PUT' = body === undefined ? 'GET' : 'POST',
+) {
+  return request.fetch(`${MEMBER_API}${path}`, {
+    method,
+    data: body ?? {},
+    headers: { 'access-auth-token': token },
+  })
+}
+
+/** The newest 6-digit code mailed to an address after `notBefore`
+ * (ms epoch; mailpit answers newest-first). */
+export async function mailedCode(
+  email: string,
+  request: APIRequestContext,
+  notBefore = 0,
+): Promise<string> {
+  const deadline = Date.now() + 15000
+  while (Date.now() < deadline) {
+    const res = await request.get(`${MAILSINK}/api/v1/search?query=to:${encodeURIComponent(email)}`)
+    if (res.ok()) {
+      const body = (await res.json()) as { messages?: Array<{ ID: string; Created: string }> }
+      for (const message of body.messages ?? []) {
+        if (Date.parse(message.Created) < notBefore - 1000) {
+          break // newest-first: everything older is irrelevant
+        }
+        const fetched = await request.get(`${MAILSINK}/api/v1/message/${message.ID}`)
+        if (!fetched.ok()) {
+          continue
+        }
+        const messageBody = (await fetched.json()) as { Text?: string }
+        const match = (messageBody.Text ?? '').match(/\b(\d{6})\b/)
+        if (match) {
+          return match[1]!
+        }
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 500))
+  }
+  throw new Error(`no code mailed to ${email}`)
+}
+
+/** Submits one KYC application for a member (base64 images, as the
+ * member app does). */
+export async function submitMemberKyc(request: APIRequestContext, token: string): Promise<void> {
+  const image = Buffer.from('e2e-document-bytes').toString('base64')
+  const res = await memberCall(request, token, '/uc/kyc', {
+    fullName: 'E2e Member',
+    documentNumber: `E2E-${Date.now()}`,
+    frontImage: image,
+    backImage: image,
+  })
+  if (!res.ok()) {
+    throw new Error(`member kyc ${res.status()}: ${await res.text()}`)
+  }
+}
+
+/** Signs in over HTTP inside the browser page (same-origin through
+ * the Caddy edge, cookie jar included). */
+export async function loginHttp(
+  page: Page,
+  email: string,
+  password: string,
+  code = '',
+): Promise<ApiAnswer> {
+  return pageApi(page, '/api/login', 'POST', { email, password, code })
+}
+
+export interface StaffAccount {
+  email: string
+  password: string
+  totpSecret: string
+  role: string
+}
+
+function suffix(): string {
+  return Math.random().toString(16).slice(2, 10)
+}
+
+/** A per-run unique staff email (audit rows filter on the actor, so
+ * uniqueness makes every assertion exact across reruns). */
+export function uniqueEmail(prefix: string): string {
+  return `${prefix}-${suffix()}@exchange.example.com`
+}
+
+interface RoleListEntry {
+  id: string
+  name: string
+}
+
+function isRoleListEntry(value: unknown): value is RoleListEntry {
+  return typeof value === 'object' && value !== null && 'id' in value && 'name' in value
+}
+
+/** The Role id of one seeded Role, over the served surface. */
+export async function roleIdOf(page: Page, name: string): Promise<string> {
+  const answer = await pageApi(page, '/api/roles')
+  if (answer.status !== 200) {
+    throw new Error(`roles ${answer.status}: ${JSON.stringify(answer.body)}`)
+  }
+  const roles = (Array.isArray(answer.body) ? answer.body : []).filter(isRoleListEntry)
+  const role = roles.find((candidate) => candidate.name === name)
+  if (!role) {
+    throw new Error(`Role ${name} is not seeded`)
+  }
+  return role.id
+}
+
+interface EmployeeListEntry {
+  id: string
+  email: string
+}
+
+function isEmployeeListEntry(value: unknown): value is EmployeeListEntry {
+  return typeof value === 'object' && value !== null && 'id' in value && 'email' in value
+}
+
+/** The Employee id of one email, over the served surface. */
+export async function employeeIdOf(page: Page, email: string): Promise<string> {
+  const answer = await pageApi(page, '/api/employees')
+  if (answer.status !== 200) {
+    throw new Error(`employees ${answer.status}: ${JSON.stringify(answer.body)}`)
+  }
+  const rows = (Array.isArray(answer.body) ? answer.body : []).filter(isEmployeeListEntry)
+  const row = rows.find((candidate) => candidate.email === email)
+  if (!row) {
+    throw new Error(`Employee ${email} not found`)
+  }
+  return row.id
+}
+
+/** Creates one Employee as the super-admin (Employee create is itself
+ * Step-up — the root's fresh code), then walks the forced first-login
+ * setup over HTTP: rotate the one-time password, enroll TOTP, confirm.
+ * The page ends signed in as the new Employee's normal session. */
+export async function provisionEmployee(
+  page: Page,
+  root: { email: string; password: string; totpSecret: string },
+  role: string,
+): Promise<StaffAccount> {
+  const login = await loginHttp(page, root.email, root.password, await totpCode(root.totpSecret))
+  if (login.status !== 200) {
+    throw new Error(`root login ${login.status}: ${JSON.stringify(login.body)}`)
+  }
+  const roleID = await roleIdOf(page, role)
+  const email = uniqueEmail(`e2e-${role}`)
+  const oneTime = `E2e-one-time-${suffix()}`
+  const created = await pageApi(page, '/api/employees', 'POST', {
+    email,
+    password: oneTime,
+    role_id: roleID,
+    code: await totpCode(root.totpSecret),
+  })
+  if (created.status !== 200) {
+    throw new Error(`employee create ${created.status}: ${JSON.stringify(created.body)}`)
+  }
+  await pageApi(page, '/api/logout', 'POST')
+
+  // Forced setup: password-only login (the one-time credential carries
+  // no TOTP yet), rotation, re-login, enrollment, confirmation.
+  const first = await loginHttp(page, email, oneTime)
+  if (first.status !== 200) {
+    throw new Error(`first login ${first.status}: ${JSON.stringify(first.body)}`)
+  }
+  const password = `E2e-staff-${suffix()}`
+  const rotated = await pageApi(page, '/api/password', 'POST', {
+    current_password: oneTime,
+    new_password: password,
+  })
+  if (rotated.status !== 200) {
+    throw new Error(`rotation ${rotated.status}: ${JSON.stringify(rotated.body)}`)
+  }
+  const second = await loginHttp(page, email, password)
+  if (second.status !== 200) {
+    throw new Error(`second login ${second.status}: ${JSON.stringify(second.body)}`)
+  }
+  const enrolled = await pageApi(page, '/api/totp/enroll', 'POST')
+  if (enrolled.status !== 200) {
+    throw new Error(`enroll ${enrolled.status}: ${JSON.stringify(enrolled.body)}`)
+  }
+  const secret = enrolled.body !== null &&
+    typeof enrolled.body === 'object' &&
+    'secret' in enrolled.body &&
+    typeof enrolled.body.secret === 'string'
+    ? enrolled.body.secret
+    : ''
+  if (!secret) {
+    throw new Error('enrollment served no secret')
+  }
+  const confirmed = await pageApi(page, '/api/totp/confirm', 'POST', {
+    code: await totpCode(secret),
+  })
+  if (confirmed.status !== 200) {
+    throw new Error(`confirm ${confirmed.status}: ${JSON.stringify(confirmed.body)}`)
+  }
+  return { email, password, totpSecret: secret, role }
+}
+
+export interface AuditRow {
+  id: number
+  actor: string
+  action: string
+  target: string
+  before: unknown
+  after: unknown
+  origin_ip: string
+  created_at: string
+}
+
+/** Searches the served audit log — the only read side of the
+ * middleware-written trail the black-box proof may assert on. */
+export async function auditRows(
+  page: Page,
+  filter: { actor?: string; action?: string; target?: string },
+): Promise<AuditRow[]> {
+  const params = new URLSearchParams()
+  for (const [key, value] of Object.entries(filter)) {
+    if (value !== undefined) {
+      params.set(key, value)
+    }
+  }
+  const answer = await pageApi(page, `/api/audit-log?${params.toString()}`)
+  if (answer.status !== 200) {
+    throw new Error(`audit search ${answer.status}: ${JSON.stringify(answer.body)}`)
+  }
+  if (answer.body === null || typeof answer.body !== 'object' || !('rows' in answer.body)) {
+    throw new Error(`audit search served no rows: ${JSON.stringify(answer.body)}`)
+  }
+  const rows = answer.body.rows
+  return Array.isArray(rows) ? (rows as AuditRow[]) : []
+}
+
+/** One recorded delivery of the host-side SMS sink: the generic HTTP
+ * SMS endpoint the api's sms driver POSTs {"to","message"} to. */
+export interface SmsDelivery {
+  authorization: string
+  to: string
+  message: string
+}
+
+export interface SmsSink {
+  port: number
+  deliveries: SmsDelivery[]
+  close: () => Promise<void>
+}
+
+/** Starts the SMS sink on the host: the api container reaches it at
+ * http://host.docker.internal:<port>/sms (Docker Desktop routes the
+ * name to the host loopback), and the channel credentials point the
+ * sms driver at exactly that URL. */
+export function startSmsSink(): Promise<SmsSink> {
+  const deliveries: SmsDelivery[] = []
+  const server: Server = createServer((req, res) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk: Buffer) => chunks.push(chunk))
+    req.on('end', () => {
+      if (req.url === '/sms' && req.method === 'POST') {
+        try {
+          const raw = JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+            to?: unknown
+            message?: unknown
+          }
+          deliveries.push({
+            authorization: req.headers.authorization ?? '',
+            to: typeof raw.to === 'string' ? raw.to : '',
+            message: typeof raw.message === 'string' ? raw.message : '',
+          })
+        } catch {
+          deliveries.push({ authorization: req.headers.authorization ?? '', to: '', message: '' })
+        }
+      }
+      res.writeHead(204)
+      res.end()
+    })
+  })
+  const { promise, resolve } = Promise.withResolvers<void>()
+  server.listen(0, '127.0.0.1', () => resolve())
+  return promise.then(() => {
+    const address = server.address()
+    if (address === null || typeof address === 'string') {
+      throw new Error('sms sink did not bind')
+    }
+    const { promise: closed, resolve: done } = Promise.withResolvers<void>()
+    return {
+      port: address.port,
+      deliveries,
+      close: () => {
+        server.close(() => done())
+        return closed
+      },
+    }
+  })
 }

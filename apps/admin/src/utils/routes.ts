@@ -28,9 +28,18 @@ export interface AdminSection {
 
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Sections for Members, Finance, Compliance, Content, Config,
-// and Audit grow with #57-#63.
+// matrix. Members (#58, support's view/lock) and the Compliance KYC
+// queue landed with their registry entries; Finance, Content, Config,
+// and Audit grow with #59-#63.
 export const adminSections: AdminSection[] = [
+  {
+    title: 'Members',
+    routes: [{ path: '/members', title: 'Members', permission: 'search:member' }],
+  },
+  {
+    title: 'Compliance',
+    routes: [{ path: '/kyc', title: 'KYC review', permission: 'view:kyc' }],
+  },
   {
     title: 'System',
     routes: [

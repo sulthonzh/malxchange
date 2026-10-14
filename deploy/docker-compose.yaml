@@ -236,6 +236,9 @@ services:
       MAL_ADMIN_SESSION_ABSOLUTE: ${MAL_ADMIN_SESSION_ABSOLUTE:-12h}
       MAL_ADMIN_SESSION_IDLE: ${MAL_ADMIN_SESSION_IDLE:-30m}
       MAL_ADMIN_LOCKOUT_WINDOW: ${MAL_ADMIN_LOCKOUT_WINDOW:-15m}
+      # api's internal member RPC (issue #58): search/detail/lock, KYC
+      # queue/review, Authenticator reset.
+      MAL_ADMIN_API_BASE_URL: ${MAL_ADMIN_API_BASE_URL:-http://api:8080/internal}
 
   # The admin app (spec #25, issue #56): Nuxt 3 SSR behind Caddy on
   # the admin domain; /api/* on that vhost proxies to admin-api. The

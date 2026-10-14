@@ -26,6 +26,10 @@ describe('visibleRoutes', () => {
       'view:member',
       'view:kyc',
       'view:kyc-evidence',
+      // #62: the Code channel surface is super-admin's alone.
+      'view:channel',
+      'activate:channel',
+      'deactivate:channel',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })

@@ -36,6 +36,11 @@ const (
 	PermViewKYCEvidence = "view:kyc-evidence" // GET    /api/kyc/applications/{memberId}/evidence
 	PermReviewKYC       = "review:kyc"        // POST   /api/kyc/applications/{memberId}/review
 	PermResetMemberTOTP = "reset:member-totp" // POST   /api/members/{id}/totp/reset (Step-up)
+
+	// Code channels (issue #62, ADR-0006): super-admin's alone.
+	PermViewChannel       = "view:channel"       // GET    /api/channels
+	PermActivateChannel   = "activate:channel"   // POST   /api/channels/{name}/activate (Step-up)
+	PermDeactivateChannel = "deactivate:channel" // POST   /api/channels/{name}/deactivate
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -74,6 +79,14 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/kyc/applications/{memberId}/evidence", Perm: PermViewKYCEvidence, Matrix: []string{RoleCompliance, RoleSuperAdmin}, Handler: (*Server).handleKYCEvidence},
 	{Method: http.MethodPost, Path: "/api/kyc/applications/{memberId}/review", Perm: PermReviewKYC, Matrix: []string{RoleCompliance}, Handler: (*Server).handleKYCReview},
 	{Method: http.MethodPost, Path: "/api/members/{id}/totp/reset", Perm: PermResetMemberTOTP, Matrix: []string{RoleCompliance}, Handler: (*Server).handleMemberTOTPReset},
+
+	// Code channels (#62, ADR-0006): state and credential validation
+	// live in api; this surface is the gated front. Super-admin's alone
+	// in the ADR-0012 matrix. Activation carries the credential save,
+	// so it demands Step-up inside the handler.
+	{Method: http.MethodGet, Path: "/api/channels", Perm: PermViewChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListChannels},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/activate", Perm: PermActivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleActivateChannel},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/deactivate", Perm: PermDeactivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeactivateChannel},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

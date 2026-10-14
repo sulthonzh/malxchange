@@ -158,7 +158,7 @@ func newMemberStack(t *testing.T) (*itStack, *stubMemberAPI) {
 	s := newStack(t)
 	stub := newStubMemberAPI(t)
 	srv := NewServer(s.pool, s.env, nil)
-	srv.apis = &apiClient{base: stub.srv.URL + "/internal", http: &http.Client{Timeout: 5 * time.Second}}
+	srv.api = &apiClient{base: stub.srv.URL + "/internal", http: &http.Client{Timeout: 5 * time.Second}}
 	root := http.NewServeMux()
 	internal := http.NewServeMux()
 	srv.RegisterPublic(root)

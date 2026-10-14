@@ -9,10 +9,11 @@ import (
 	"time"
 )
 
-// The api client's error mapping (issue #58): api's {"error": …}
-// envelope becomes a typed upstream error the handlers re-emit with
-// the original status and sentence; transport failures collapse to
-// errAPIDown. Hermetic — no database, no integration gate.
+// The shared api client's error mapping (channels.go, exercised here
+// through the #58 surface's needs): api's {"error": …} envelope becomes
+// a typed upstream error the handlers re-emit with the original status
+// and sentence; transport failures collapse to errAPIDown. Hermetic —
+// no database, no integration gate.
 func TestAPIClientErrorMapping(t *testing.T) {
 	t.Run("upstream error envelope passes status and message through", func(t *testing.T) {
 		stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -23,8 +24,8 @@ func TestAPIClientErrorMapping(t *testing.T) {
 		defer stub.Close()
 
 		c := &apiClient{base: stub.URL, http: stub.Client()}
-		err := c.call(context.Background(), http.MethodPost, "/members/m-1/authenticator/reset",
-			map[string]string{"actor": "c@it.test"}, nil, defaultCallCap, "c@it.test")
+		err := c.call(context.Background(), http.MethodPost,
+			"/members/m-1/authenticator/reset", "c@it.test", map[string]string{"actor": "c@it.test"}, nil)
 		var ue *apiUpstreamError
 		if !errors.As(err, &ue) {
 			t.Fatalf("want *apiUpstreamError, got %v", err)
@@ -41,7 +42,7 @@ func TestAPIClientErrorMapping(t *testing.T) {
 		defer stub.Close()
 
 		c := &apiClient{base: stub.URL, http: stub.Client()}
-		err := c.call(context.Background(), http.MethodGet, "/members", nil, nil, defaultCallCap, "")
+		err := c.call(context.Background(), http.MethodGet, "/members", "", nil, nil)
 		var ue *apiUpstreamError
 		if !errors.As(err, &ue) || ue.Status != http.StatusInternalServerError || ue.Message == "" {
 			t.Fatalf("upstream error = %v", err)
@@ -54,7 +55,7 @@ func TestAPIClientErrorMapping(t *testing.T) {
 		stub.Close() // nothing listens anymore
 
 		c := &apiClient{base: base, http: &http.Client{}}
-		err := c.call(context.Background(), http.MethodGet, "/members", nil, nil, defaultCallCap, "")
+		err := c.call(context.Background(), http.MethodGet, "/members", "", nil, nil)
 		if !errors.Is(err, errAPIDown) {
 			t.Fatalf("want errAPIDown, got %v", err)
 		}
@@ -74,23 +75,37 @@ func TestAPIClientErrorMapping(t *testing.T) {
 			Status string `json:"status"`
 		}
 		if err := c.call(context.Background(), http.MethodPost, "/members/m-1/lock",
-			map[string]any{}, &out, defaultCallCap, "s@it.test"); err != nil {
+			"s@it.test", map[string]any{}, &out); err != nil {
 			t.Fatal(err)
 		}
 		if actor != "s@it.test" || out.ID != "m-1" || out.Status != "locked" {
 			t.Fatalf("actor %q out %+v", actor, out)
 		}
 	})
+
+	t.Run("callLimit truncates an answer beyond its cap into an error", func(t *testing.T) {
+		stub := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write(make([]byte, 4096))
+		}))
+		defer stub.Close()
+
+		c := &apiClient{base: stub.URL, http: stub.Client()}
+		var out map[string]any
+		err := c.callLimit(context.Background(), http.MethodGet, "/x", "", nil, &out, 16)
+		if err == nil {
+			t.Fatal("want a decode error for the truncated answer")
+		}
+	})
 }
 
-// LoadAdminEnv's api knob defaults are the compose contract: api's
-// internal RPC behind the /internal suffix, 5 s ceiling.
+// The env knob defaults are the compose contract: api's internal RPC
+// behind the /internal suffix, 5 s ceiling.
 func TestLoadAdminEnvAPIDefaults(t *testing.T) {
 	env := loadAdminEnv()
-	if env.ApiBaseURL != "http://api:8080/internal" {
-		t.Fatalf("ApiBaseURL default = %q", env.ApiBaseURL)
+	if env.APIBaseURL != "http://api:8080/internal" {
+		t.Fatalf("APIBaseURL default = %q", env.APIBaseURL)
 	}
-	if env.ApiTimeout != 5*time.Second {
-		t.Fatalf("ApiTimeout default = %v", env.ApiTimeout)
+	if env.APITimeout != 5*time.Second {
+		t.Fatalf("APITimeout default = %v", env.APITimeout)
 	}
 }

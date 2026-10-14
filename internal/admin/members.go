@@ -52,7 +52,8 @@ type kycQueueItem struct {
 
 // kycEvidenceView is the review-dialog payload: the application's
 // identity data plus both document images, base64 (api's evidence RPC
-// shape).
+// shape). It rides callLimit with evidenceCap — submitted images are
+// up to 5 MiB each and base64 inflates 4/3.
 type kycEvidenceView struct {
 	MemberID       string `json:"memberId"`
 	FullName       string `json:"fullName"`
@@ -95,16 +96,19 @@ func pagingForwards(r *http.Request, extra ...string) string {
 	return v.Encode()
 }
 
+// evidenceCap is the answer cap for one KYC evidence read (5 MiB per
+// submitted image, base64-inflated 4/3, plus identity fields).
+const evidenceCap = 16 << 20
+
 // handleSearchMembers serves GET /api/members — the support/super-admin
 // search list (q, status filter, paging).
 func (s *Server) handleSearchMembers(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
 	var out memberSearchView
-	err := s.apis.call(r.Context(), http.MethodGet, "/members?"+pagingForwards(r, "q", "status"),
-		nil, &out, defaultCallCap, "")
+	err := s.api.call(r.Context(), http.MethodGet, "/members?"+pagingForwards(r, "q", "status"), "", nil, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -114,13 +118,12 @@ func (s *Server) handleSearchMembers(w http.ResponseWriter, r *http.Request) {
 // handleMemberView serves GET /api/members/{id} — the detail view
 // (identity, status, KYC state, Authenticator/Code-channel bindings).
 func (s *Server) handleMemberView(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
 	var out adminMemberView
-	err := s.apis.call(r.Context(), http.MethodGet, "/members/"+r.PathValue("id"),
-		nil, &out, defaultCallCap, "")
+	err := s.api.call(r.Context(), http.MethodGet, "/members/"+r.PathValue("id"), "", nil, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -139,7 +142,7 @@ func (s *Server) handleMemberUnlock(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) memberSetStatus(w http.ResponseWriter, r *http.Request, status string) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
@@ -149,8 +152,7 @@ func (s *Server) memberSetStatus(w http.ResponseWriter, r *http.Request, status 
 		ID     string `json:"id"`
 		Status string `json:"status"`
 	}
-	err := s.apis.call(r.Context(), http.MethodPost, "/members/"+id+"/"+statusOf(status),
-		map[string]string{}, &out, defaultCallCap, actor.Email)
+	err := s.api.call(r.Context(), http.MethodPost, "/members/"+id+"/"+statusOf(status), actor.Email, map[string]string{}, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -173,13 +175,12 @@ func statusOf(status string) string {
 // handleKYCQueue serves GET /api/kyc/applications — compliance's
 // pending queue (metadata; evidence loads per application).
 func (s *Server) handleKYCQueue(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
 	var out kycQueueView
-	err := s.apis.call(r.Context(), http.MethodGet, "/members/kyc/pending?"+pagingForwards(r),
-		nil, &out, defaultCallCap, "")
+	err := s.api.call(r.Context(), http.MethodGet, "/members/kyc/pending?"+pagingForwards(r), "", nil, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -189,13 +190,13 @@ func (s *Server) handleKYCQueue(w http.ResponseWriter, r *http.Request) {
 // handleKYCEvidence serves GET /api/kyc/applications/{memberId}/evidence —
 // the review dialog's document images.
 func (s *Server) handleKYCEvidence(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
 	var out kycEvidenceView
-	err := s.apis.call(r.Context(), http.MethodGet,
-		"/members/"+r.PathValue("memberId")+"/kyc/evidence", nil, &out, evidenceCap, "")
+	err := s.api.callLimit(r.Context(), http.MethodGet,
+		"/members/"+r.PathValue("memberId")+"/kyc/evidence", "", nil, &out, evidenceCap)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -207,7 +208,7 @@ func (s *Server) handleKYCEvidence(w http.ResponseWriter, r *http.Request) {
 // refused before api is called; the audit row names the member and
 // the resulting state.
 func (s *Server) handleKYCReview(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
@@ -229,11 +230,11 @@ func (s *Server) handleKYCReview(w http.ResponseWriter, r *http.Request) {
 		MemberID  string `json:"memberId"`
 		KYCStatus string `json:"kycStatus"`
 	}
-	err := s.apis.call(r.Context(), http.MethodPost, "/members/"+id+"/kyc/review",
+	err := s.api.call(r.Context(), http.MethodPost, "/members/"+id+"/kyc/review", actor.Email,
 		struct {
 			Approved bool   `json:"approved"`
 			Reason   string `json:"reason"`
-		}{Approved: req.Approved, Reason: reason}, &out, defaultCallCap, actor.Email)
+		}{Approved: req.Approved, Reason: reason}, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}
@@ -249,7 +250,7 @@ func (s *Server) handleKYCReview(w http.ResponseWriter, r *http.Request) {
 // enforces the KYC-verified gate, revokes the binding, writes api's
 // security_audit row, and notifies the member's active Code channels).
 func (s *Server) handleMemberTOTPReset(w http.ResponseWriter, r *http.Request) {
-	if s.apis == nil {
+	if s.api == nil {
 		WriteError(w, http.StatusServiceUnavailable, "The member service is unreachable. Try again.")
 		return
 	}
@@ -268,8 +269,8 @@ func (s *Server) handleMemberTOTPReset(w http.ResponseWriter, r *http.Request) {
 		MemberID string `json:"memberId"`
 		Status   string `json:"status"`
 	}
-	err := s.apis.call(r.Context(), http.MethodPost, "/members/"+id+"/authenticator/reset",
-		map[string]string{"actor": actor.Email}, &out, defaultCallCap, actor.Email)
+	err := s.api.call(r.Context(), http.MethodPost, "/members/"+id+"/authenticator/reset", actor.Email,
+		map[string]string{"actor": actor.Email}, &out)
 	if !s.answerUpstream(w, err) {
 		return
 	}

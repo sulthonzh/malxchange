@@ -24,7 +24,7 @@ type Server struct {
 	env    *AdminEnv
 	log    *slog.Logger
 	grants grantCache // roleID → granted permission strings, invalidated on grant edits
-	apis   *apiClient // api's internal member RPC (issue #58); nil → those surfaces answer 503
+	api    *apiClient // the api service's internal RPC (channels #62, members #58); nil → those surfaces answer 503
 }
 
 // NewServer wires the surface onto a live pool.
@@ -32,7 +32,7 @@ func NewServer(pool *pgxpool.Pool, env *AdminEnv, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Server{pool: pool, env: env, log: log, grants: grantCache{sets: map[string]grantSet{}}, apis: newAPIClient(env)}
+	return &Server{pool: pool, env: env, log: log, grants: grantCache{sets: map[string]grantSet{}}, api: newAPIClient(env)}
 }
 
 // The public error envelope, same shape as the member surface's

@@ -45,6 +45,13 @@ export function bootstrapPassword(): string {
   }
 }
 
+/** Seats the page on the admin origin before any pageApi call: the
+ * in-page fetch is same-origin, so the page must hold the admin
+ * hostname for fetch() to resolve and for cookies to apply. New pages
+ * start at about:blank — every journey begins with this call. */
+export async function seatPage(page: Page): Promise<void> {
+  await page.goto('/')
+}
 export interface ApiAnswer {
   status: number
   body: unknown
@@ -126,7 +133,10 @@ export async function totpCode(secret: string, at = Date.now()): Promise<string>
 
 /** The member-side seam (spec #24 stack): Node-side against the test
  * profile's published ports, because request contexts resolve DNS for
- * real and cannot use the Chromium host mapping pageApi relies on. */
+ * real and cannot use the Chromium host mapping pageApi relies on.
+ * MEMBER_API already carries the /api prefix — memberCall paths are
+ * the FULL public paths (/api/uc/...), exactly as the browser serves
+ * them through the edge. */
 export const MEMBER_API = process.env.E2E_API_URL ?? 'http://127.0.0.1:18080/api'
 export const MAILSINK = process.env.E2E_MAIL_URL ?? 'http://127.0.0.1:18025'
 
@@ -202,7 +212,7 @@ export async function mailedCode(
  * member app does). */
 export async function submitMemberKyc(request: APIRequestContext, token: string): Promise<void> {
   const image = Buffer.from('e2e-document-bytes').toString('base64')
-  const res = await memberCall(request, token, '/uc/kyc', {
+  const res = await memberCall(request, token, '/api/uc/kyc', {
     fullName: 'E2e Member',
     documentNumber: `E2E-${Date.now()}`,
     frontImage: image,
@@ -312,6 +322,8 @@ export async function provisionEmployee(
   if (created.status !== 200) {
     throw new Error(`employee create ${created.status}: ${JSON.stringify(created.body)}`)
   }
+  // Back to the caller: the grant searches below run as whoever the
+  // caller signs in next. (Cookie jar holds one session at a time.)
   await pageApi(page, '/api/logout', 'POST')
 
   // Forced setup: password-only login (the one-time credential carries

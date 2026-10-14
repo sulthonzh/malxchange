@@ -17,11 +17,13 @@ import {
   readAdminState,
   roleIdOf,
   totpCode,
+  seatPage,
 } from './helpers'
 
 test('employee-management guards refuse the lockout shapes server-side', async ({ page }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
 
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
   const rootID = await employeeIdOf(page, root!.email)
@@ -102,10 +104,30 @@ test('employee-management guards refuse the lockout shapes server-side', async (
     const refused = await pageApi(page, `/api/employees/${rootID}/disable`, 'POST')
     expect(refused.status).toBe(403)
 
+    // The finance session cannot search the audit log — the
+    // super-admin re-authenticates for the audit assertions.
+    await pageApi(page, '/api/logout', 'POST')
+    await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+    // The audit log is append-only across reruns, so assert this
+    // run's rows by target + permission, not a global count.
     const grantAudit = await auditRows(page, { actor: root!.email, action: 'grant:role' })
-    expect(grantAudit.filter((row) => row.target === financeRoleID)).toHaveLength(2)
+    const granted = grantAudit.filter((row) => row.target === financeRoleID)
+    expect(granted.length).toBeGreaterThanOrEqual(2)
+    for (const permission of ['disable:employee', 'assign:employee-role']) {
+      expect(
+        granted.some((row) => JSON.stringify(row.after).includes(`"${permission}"`)),
+        `this run granted ${permission}`,
+      ).toBe(true)
+    }
     const revokeAudit = await auditRows(page, { actor: root!.email, action: 'revoke:role' })
-    expect(revokeAudit.filter((row) => row.target === financeRoleID)).toHaveLength(2)
+    const revoked = revokeAudit.filter((row) => row.target === financeRoleID)
+    expect(revoked.length).toBeGreaterThanOrEqual(2)
+    for (const permission of ['disable:employee', 'assign:employee-role']) {
+      expect(
+        revoked.some((row) => JSON.stringify(row.after).includes(`"${permission}"`)),
+        `this run revoked ${permission}`,
+      ).toBe(true)
+    }
     await pageApi(page, '/api/logout', 'POST')
   })
 

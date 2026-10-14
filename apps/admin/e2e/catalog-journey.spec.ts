@@ -10,7 +10,7 @@
 // the served HTTP surface only.
 import { expect, test } from '@playwright/test'
 
-import { loginHttp, pageApi, readAdminState, roleIdOf, totpCode } from './helpers'
+import { loginHttp, pageApi, readAdminState, roleIdOf, seatPage, totpCode } from './helpers'
 
 /** The 59 permission strings internal/admin/registry.go checks — the
  * endpoint list itself, sorted as the catalog serves it. */
@@ -88,6 +88,7 @@ function isRoleView(value: unknown): value is RoleView {
 test('the seeded catalog equals the endpoint list and gates the grant editor', async ({ page }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
 
   // The catalog read answers exactly the endpoint list's strings —

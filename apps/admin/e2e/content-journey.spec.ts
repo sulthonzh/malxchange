@@ -15,7 +15,9 @@ import {
   pageApi,
   provisionEmployee,
   readAdminState,
+  roleIdOf,
   totpCode,
+  seatPage,
 } from './helpers'
 
 interface AnnouncementRow {
@@ -45,8 +47,19 @@ async function createAnnouncement(
 test('admin-managed content reaches members through the member edge', async ({ page, request }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
 
   const support = await provisionEmployee(page, root!, 'support')
+  // Support's session owns the content mutations below; the admin-
+  // journey's grant-strip test revoked support's matrix grants on a
+  // shared stack, so re-grant the content strings idempotently.
+  await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+  const supportRole = await roleIdOf(page, 'support')
+  for (const permission of ['view:announcement', 'create:announcement', 'edit:announcement', 'view:help-category', 'create:help-category', 'view:help-article', 'create:help-article']) {
+    const granted = await pageApi(page, `/api/roles/${supportRole}/grants`, 'POST', { permission, granted: true })
+    expect(granted.status, permission).toBe(200)
+  }
+  await loginHttp(page, support.email, support.password, await totpCode(support.totpSecret))
   const marker = String(Date.now())
 
   // Support owns content (ADR-0012): a published announcement and a
@@ -80,11 +93,15 @@ test('admin-managed content reaches members through the member edge', async ({ p
   })
   expect(article.status, JSON.stringify(article.body)).toBe(200)
 
+  await pageApi(page, '/api/logout', 'POST')
+  // Support cannot search the audit log (ADR-0012: super-admin,
+  // finance, compliance only) — the super-admin re-authenticates for
+  // the audit assertions.
+  await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
   const announceAudit = await auditRows(page, { actor: support.email, action: 'create:announcement' })
   expect(announceAudit.some((row) => row.target === publishedID)).toBe(true)
   const articleAudit = await auditRows(page, { actor: support.email, action: 'create:help-article' })
   expect(articleAudit.length).toBeGreaterThanOrEqual(1)
-  await pageApi(page, '/api/logout', 'POST')
 
   // The member web app, through the member edge in a real browser:
   // the notice page lists the published announcement and the detail

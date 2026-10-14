@@ -22,6 +22,7 @@ import {
   registerMember,
   submitMemberKyc,
   totpCode,
+  seatPage,
 } from './helpers'
 
 const noPermission = 'You do not have permission to do that.'
@@ -29,6 +30,7 @@ const noPermission = 'You do not have permission to do that.'
 test('the four Roles act inside their matrices and are refused outside', async ({ page, request }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
 
   // One member walks the real path: register → KYC submit → TOTP bind.
   const memberEmail = `e2e-matrix-${Date.now()}@example.com`
@@ -43,14 +45,15 @@ test('the four Roles act inside their matrices and are refused outside', async (
   const stranger = await registerMember(request, strangerEmail, memberPassword)
 
   const bindMailedAt = Date.now()
-  await memberCall(request, ticket.token, '/uc/authenticator/code')
+  const codeSent = await memberCall(request, ticket.token, '/api/uc/authenticator/code')
+  expect(codeSent.status(), await codeSent.text()).toBe(200)
   const emailCode = await mailedCode(memberEmail, request, bindMailedAt)
-  const begun = await memberCall(request, ticket.token, '/uc/authenticator/bind/begin', { code: emailCode })
+  const begun = await memberCall(request, ticket.token, '/api/uc/authenticator/bind/begin', { code: emailCode })
   expect(begun.status()).toBe(200)
   const begunBody = (await begun.json()) as { secret?: string }
   expect(begunBody.secret, 'the member TOTP enrollment stages a secret').toBeTruthy()
   const memberSecret = begunBody.secret!
-  const confirmed = await memberCall(request, ticket.token, '/uc/authenticator/bind/confirm', {
+  const confirmed = await memberCall(request, ticket.token, '/api/uc/authenticator/bind/confirm', {
     code: await totpCode(memberSecret),
   })
   expect(confirmed.status()).toBe(200)
@@ -104,6 +107,10 @@ test('the four Roles act inside their matrices and are refused outside', async (
     const channels = await pageApi(page, '/api/channels')
     expect(channels.status).toBe(403)
 
+    await pageApi(page, '/api/logout', 'POST')
+    // Finance cannot search the audit log — re-authenticate as the
+    // super-admin for the audit assertion.
+    await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
     const audit = await auditRows(page, { actor: finance.email, action: 'adjust:balance' })
     expect(audit).toHaveLength(2) // the adjustment and its idempotent replay
     expect(audit.every((row) => row.target === ticket.member.id)).toBe(true)
@@ -161,6 +168,8 @@ test('the four Roles act inside their matrices and are refused outside', async (
     const ops = await pageApi(page, '/api/ops')
     expect(ops.status).toBe(403)
 
+    await pageApi(page, '/api/logout', 'POST')
+    await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
     const reviewAudit = await auditRows(page, { actor: compliance.email, action: 'review:kyc' })
     expect(reviewAudit).toHaveLength(1)
     expect(reviewAudit[0]!.target).toBe(ticket.member.id)
@@ -201,6 +210,8 @@ test('the four Roles act inside their matrices and are refused outside', async (
     const channels = await pageApi(page, '/api/channels')
     expect(channels.status).toBe(403)
 
+    await pageApi(page, '/api/logout', 'POST')
+    await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
     const lockAudit = await auditRows(page, { actor: support.email, action: 'lock:member' })
     expect(lockAudit).toHaveLength(1)
     expect(lockAudit[0]!.target).toBe(ticket.member.id)

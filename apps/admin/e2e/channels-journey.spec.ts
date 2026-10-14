@@ -20,6 +20,7 @@ import {
   registerMember,
   startSmsSink,
   totpCode,
+  seatPage,
 } from './helpers'
 
 interface ChannelState {
@@ -49,6 +50,7 @@ test('a newly activated channel delivers a member Verification code end to end',
 }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
 
   const sink = await startSmsSink()
   const apiKey = `e2e-key-${Date.now()}`
@@ -97,7 +99,7 @@ test('a newly activated channel delivers a member Verification code end to end',
   const ticket = await registerMember(request, memberEmail, memberPassword)
   const phone = `+1555${String(Date.now()).slice(-7)}`
 
-  const sent = await memberCall(request, ticket.token, '/uc/phone/code', { phone })
+  const sent = await memberCall(request, ticket.token, '/api/uc/phone/code', { phone })
   expect(sent.status(), await sent.text()).toBe(200)
   expect(await sent.json()).toEqual({ status: 'code sent' })
 
@@ -116,7 +118,7 @@ test('a newly activated channel delivers a member Verification code end to end',
 
   // The code the channel delivered completes the bind — proof the
   // receipt is real, not just an outbound POST.
-  const bound = await memberCall(request, ticket.token, '/uc/phone/bind', {
+  const bound = await memberCall(request, ticket.token, '/api/uc/phone/bind', {
     phone,
     password: memberPassword,
     code: codeMatch![1],

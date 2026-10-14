@@ -151,11 +151,19 @@ test('grants-free Employee: sidebar hides ungranted routes and the server refuse
   const rolesAnswer = await pageApi(page, '/api/roles')
   expect(rolesAnswer.status).toBe(200)
   const roles = (Array.isArray(rolesAnswer.body) ? rolesAnswer.body : []).filter(isRoleView)
-  // support's matrix grants (member view/lock, content) belong to
-  // endpoints later slices own — today its live set is empty.
+  // A grants-free Employee needs a Role holding no grants: the
+  // journey strips the seeded support Role down to the empty set
+  // (every later test provisions its own Employees, and #57's grant
+  // editor journey covers the populated matrix).
   const support = roles.find((role) => role.name === 'support')
   expect(support, 'the support Role is seeded').toBeTruthy()
-  expect(support!.permissions).toEqual([])
+  for (const permission of support!.permissions) {
+    const revoked = await pageApi(page, `/api/roles/${support!.id}/grants`, 'POST', {
+      permission,
+      granted: false,
+    })
+    expect(revoked.status, JSON.stringify(revoked.body)).toBe(200)
+  }
 
   const staffEmail = `support-e2e-${suffix()}@exchange.example.com`
   const oneTime = `E2e-one-time-${suffix()}`

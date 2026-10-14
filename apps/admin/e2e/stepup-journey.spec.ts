@@ -21,7 +21,14 @@ import {
   registerMember,
   totpCode,
   type StaffAccount,
+  seatPage,
 } from './helpers'
+
+/** The server's Step-up refusal sentences (internal/admin/stepup.go) —
+ * asserted verbatim so a gate that ever weakens its wording fails here. */
+const stepUpRequired = 'A fresh authenticator code is required for this action.'
+const stepUpInvalid = 'That code is not valid. Check your authenticator app and try again.'
+
 /** What happens once the Step-up gate passes: the request's own
  * validation or upstream answer — never a Step-up 401. `message` is
  * the exact sentence; `messageContains` a stable fragment. */
@@ -54,6 +61,7 @@ test('every Step-up action demands and enforces a fresh code server-side', async
 }) => {
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await seatPage(page)
 
   // The balance adjust needs a real member row in the wallet ledger.
   const memberEmail = `e2e-stepup-${Date.now()}@example.com`
@@ -90,21 +98,21 @@ test('every Step-up action demands and enforces a fresh code server-side', async
       path: `/api/withdrawals/${dummyID}/approve`,
       body: {},
       // The unknown id reaches the wallet's guarded state machine.
-      pastGate: { status: 400, messageContains: 'invalid state' },
+      pastGate: { status: 400, messageContains: 'illegal state transition' },
     },
     {
       name: 'failed broadcast retry',
       as: 'finance',
       path: `/api/withdrawals/${dummyID}/retry`,
       body: {},
-      pastGate: { status: 400, messageContains: 'invalid state' },
+      pastGate: { status: 400, messageContains: 'illegal state transition' },
     },
     {
       name: 'sweep retry',
       as: 'finance',
       path: `/api/sweeps/${dummyID}/retry`,
       body: {},
-      pastGate: { status: 400, messageContains: 'invalid state' },
+      pastGate: { status: 400, messageContains: 'illegal state transition' },
     },
     {
       name: 'hot→cold transfer',
@@ -120,14 +128,14 @@ test('every Step-up action demands and enforces a fresh code server-side', async
       as: 'finance',
       path: `/api/hot-transfers/${dummyID}/retry`,
       body: {},
-      pastGate: { status: 400, messageContains: 'invalid state' },
+      pastGate: { status: 400, messageContains: 'illegal state transition' },
     },
     {
       name: 'code-channel credential save',
       as: 'root',
       path: '/api/channels/nosuch/activate',
       body: { credentials: {} },
-      pastGate: { status: 404, message: 'unknown code channel' },
+      pastGate: { status: 404, message: 'unknown code channel: "nosuch"' },
     },
     {
       name: 'Employee create',

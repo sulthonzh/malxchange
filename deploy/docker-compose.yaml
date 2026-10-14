@@ -223,6 +223,10 @@ services:
     environment:
       <<: *service-env
       MAL_PG_PASSWORD: ${MAL_PG_PASSWORD_ADMIN}
+      # Employee session + lockout windows (issue #53, ADR-0012)
+      MAL_ADMIN_SESSION_ABSOLUTE: ${MAL_ADMIN_SESSION_ABSOLUTE:-12h}
+      MAL_ADMIN_SESSION_IDLE: ${MAL_ADMIN_SESSION_IDLE:-30m}
+      MAL_ADMIN_LOCKOUT_WINDOW: ${MAL_ADMIN_LOCKOUT_WINDOW:-15m}
 
   caddy:
     image: docker.io/library/caddy:2-alpine

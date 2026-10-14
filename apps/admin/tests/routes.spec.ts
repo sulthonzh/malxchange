@@ -9,7 +9,10 @@ import { adminSections, visibleRoutes } from '../src/utils/routes'
 // UI-invented strings exist.
 
 describe('visibleRoutes', () => {
-  it('keeps every section for the full super-admin permission set', () => {
+  it('keeps every section for the full permission set', () => {
+    // The union of the seeded matrix grants the table's entries key on:
+    // super-admin's set (employees, roles, read side) plus finance's
+    // adjust:balance (#59).
     const permissions = [
       'view:employee',
       'create:employee',
@@ -30,6 +33,8 @@ describe('visibleRoutes', () => {
       'view:channel',
       'activate:channel',
       'deactivate:channel',
+      'view:withdrawal',
+      'adjust:balance',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })

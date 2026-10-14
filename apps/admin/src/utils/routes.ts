@@ -10,7 +10,7 @@
 //
 // Entries appear here as their slices land; permission strings come
 // only from the registry (the catalog is read-only — no UI-invented
-// strings). The Employee/Role management pages are slice #57's.
+// strings). System and Audit are slice #57's; Config arrived with #62.
 
 export interface AdminRoute {
   /** History-mode app route the entry navigates to. */
@@ -28,12 +28,13 @@ export interface AdminSection {
 
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Members (#58, support's view/lock) and the Compliance KYC
-// queue landed with their registry entries, as did the Code channels'
+// matrix. The Audit section arrives with #57's audit-log search.
+// Members (#58, support's view/lock) and the Compliance KYC queue
+// landed with their registry entries, as did the Code channels'
 // Config section (#62), the Content section (#63 — support's
 // announcements and help center, publish via the edit form's switch),
-// and the Config editors + engine status (#61). Finance and Audit
-// grow with #59.
+// and the Config editors + engine status (#61). Finance grows with
+// #59.
 export const adminSections: AdminSection[] = [
   {
     title: 'Members',
@@ -67,6 +68,12 @@ export const adminSections: AdminSection[] = [
       { path: '/content/announcements', title: 'Announcements', permission: 'view:announcement' },
       { path: '/content/help-categories', title: 'Help categories', permission: 'view:help-category' },
       { path: '/content/help-articles', title: 'Help articles', permission: 'view:help-article' },
+    ],
+  },
+  {
+    title: 'Audit',
+    routes: [
+      { path: '/audit/log', title: 'Audit log', permission: 'view:audit-log' },
     ],
   },
   {

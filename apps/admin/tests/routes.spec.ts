@@ -43,6 +43,9 @@ describe('visibleRoutes', () => {
       'view:member',
       'view:kyc',
       'view:kyc-evidence',
+      // #57: the grant editor's catalog and the audit-log search.
+      'view:permission',
+      'view:audit-log',
       // #62: the Code channel surface is super-admin's alone.
       'view:channel',
       'activate:channel',
@@ -83,6 +86,13 @@ describe('visibleRoutes', () => {
     ])
     expect(sections.map((s) => s.title)).toEqual(['Compliance'])
     expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/kyc'])
+  })
+
+  it('derives the Audit section from the audit-log read permission', () => {
+    const sections = visibleRoutes(adminSections, ['view:audit-log'])
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.title).toBe('Audit')
+    expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/audit/log'])
   })
 
   it('renders nothing for a permission set outside the table', () => {

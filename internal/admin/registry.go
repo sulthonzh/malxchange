@@ -100,6 +100,11 @@ const (
 	PermRetryWithdrawal   = "retry:withdrawal"   // POST /api/withdrawals/{id}/retry (Step-up)
 	PermRefundWithdrawal  = "refund:withdrawal"  // POST /api/withdrawals/{id}/refund
 	PermAdjustBalance     = "adjust:balance"     // POST /api/adjustments (Step-up)
+
+	// Permission catalog + audit log (issue #57): the grant editor's
+	// read-only catalog row set and the audit-log search.
+	PermViewPermission = "view:permission" // GET /api/permissions (the read-only catalog)
+	PermViewAuditLog   = "view:audit-log"  // GET /api/audit-log
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -185,6 +190,14 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodPost, Path: "/api/kyc/applications/{memberId}/review", Perm: PermReviewKYC, Matrix: []string{RoleCompliance}, Handler: (*Server).handleKYCReview},
 	{Method: http.MethodPost, Path: "/api/members/{id}/totp/reset", Perm: PermResetMemberTOTP, Matrix: []string{RoleCompliance}, Handler: (*Server).handleMemberTOTPReset},
 
+	// The grant editor's catalog read (ticket #57): the row set the
+	// editor renders is exactly this table — display-only everywhere.
+	// Same audience as the Role surface it feeds.
+	{Method: http.MethodGet, Path: "/api/permissions", Perm: PermViewPermission, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListPermissions},
+	// Audit log search (ticket #57): ADR-0012 reads the log with
+	// super-admin/finance/compliance. A GET — searching writes nothing,
+	// so the audit middleware does not apply.
+	{Method: http.MethodGet, Path: "/api/audit-log", Perm: PermViewAuditLog, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance}, Handler: (*Server).handleSearchAuditLog},
 	// Code channels (#62, ADR-0006): state and credential validation
 	// live in api; this surface is the gated front. Super-admin's alone
 	// in the ADR-0012 matrix. Activation carries the credential save,

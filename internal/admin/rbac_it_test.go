@@ -545,6 +545,26 @@ func TestRoleEndpointsGrantEditAndDeleteRefusals(t *testing.T) {
 		 VALUES ('it-emp-holder', 'holder@it.test', 'x', 'it-role-auditor', true, false)`); err != nil {
 		t.Fatal(err)
 	}
+	// The list marks held Roles in use — the UI's undeletable signal
+	// alongside `system` for the seeded ones.
+	status, _, raw = s.do(t, "GET", "/api/roles", "", cookie)
+	if status != http.StatusOK {
+		t.Fatalf("re-list roles: %d %s", status, raw)
+	}
+	if err := json.Unmarshal([]byte(raw), &roles); err != nil {
+		t.Fatal(err)
+	}
+	inUse := map[string]bool{}
+	for _, r := range roles {
+		inUse[r.Name] = r.InUse
+	}
+	if !inUse[RoleSuperAdmin] || !inUse["it-auditor"] {
+		t.Fatalf("held Roles must read in_use: %v", inUse)
+	}
+	if inUse["it-unused"] || inUse[RoleFinance] || inUse[RoleCompliance] || inUse[RoleSupport] {
+		t.Fatalf("unheld Roles must not read in_use: %v", inUse)
+	}
+
 	if status, _, raw := s.do(t, "DELETE", "/api/roles/it-role-auditor", "", cookie); status != http.StatusConflict || !strings.Contains(raw, "held by an Employee") {
 		t.Fatalf("delete in-use role: %d %s", status, raw)
 	}

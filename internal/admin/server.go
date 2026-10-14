@@ -20,10 +20,11 @@ import (
 
 // Server is the admin-api Employee-auth surface.
 type Server struct {
-	pool   *pgxpool.Pool
-	env    *AdminEnv
-	log    *slog.Logger
-	grants grantCache // roleID → granted permission strings, invalidated on grant edits
+	pool      *pgxpool.Pool
+	env       *AdminEnv
+	log       *slog.Logger
+	grants    grantCache // roleID → granted permission strings, invalidated on grant edits
+	upstreams *upstreamSet
 }
 
 // NewServer wires the surface onto a live pool.
@@ -31,7 +32,13 @@ func NewServer(pool *pgxpool.Pool, env *AdminEnv, log *slog.Logger) *Server {
 	if log == nil {
 		log = slog.Default()
 	}
-	return &Server{pool: pool, env: env, log: log, grants: grantCache{sets: map[string]grantSet{}}}
+	return &Server{
+		pool:      pool,
+		env:       env,
+		log:       log,
+		grants:    grantCache{sets: map[string]grantSet{}},
+		upstreams: loadUpstreams(sharedUpstreamEnv(), log),
+	}
 }
 
 // The public error envelope, same shape as the member surface's

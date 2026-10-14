@@ -63,23 +63,22 @@ admin-e2e:
 	$(ENV_GUARD)
 	@set -a; . deploy/.env; set +a; \
 	$(COMPOSE_TEST) --profile test --profile e2e up -d --build; \
-	if [ -z "$${E2E_BOOTSTRAP_PASSWORD:-}" ] && [ ! -f apps/admin/e2e/.admin-state.json ]; then \
-	  boot_email="$${MAL_ADMIN_BOOTSTRAP_EMAIL:-admin@exchange.example.com}"; \
-	  boot_pw=$$(openssl rand -hex 12); \
-	  boot_rc=0; \
-	  boot_out="$$(printf '{"email":"%s","password":"%s"}' "$$boot_email" "$$boot_pw" | $(COMPOSE_TEST) exec -T admin-api /app -bootstrap-first-employee 2>&1)" || boot_rc=$$?; \
-	  case "$$boot_out" in \
-	    *bootstrapped*) E2E_BOOTSTRAP_EMAIL="$$boot_email" E2E_BOOTSTRAP_PASSWORD="$$boot_pw"; \
-	      export E2E_BOOTSTRAP_EMAIL E2E_BOOTSTRAP_PASSWORD; \
-	      echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey"; \
-	      echo "$$boot_pw" > apps/admin/e2e/.bootstrap-password; \
-	      rm -f apps/admin/e2e/.admin-state.json; \
-	      echo "one-time password saved to apps/admin/e2e/.bootstrap-password (gitignored)";; \
-	    *exists*) echo "the first Employee already exists but apps/admin/e2e/.admin-state.json is missing:" >&2; \
-	       echo "recreate the stack volumes, or export E2E_BOOTSTRAP_EMAIL/E2E_BOOTSTRAP_PASSWORD" >&2; exit 1;; \
-	    *) echo "bootstrap RPC failed (rc=$$boot_rc): $$boot_out" >&2; exit 1;; \
-	  esac; \
-	fi; \
+	boot_email="$${MAL_ADMIN_BOOTSTRAP_EMAIL:-admin@exchange.example.com}"; \
+	boot_pw=$$(openssl rand -hex 12); \
+	boot_rc=0; \
+	boot_out="$$(printf '{"email":"%s","password":"%s"}' "$$boot_email" "$$boot_pw" | $(COMPOSE_TEST) exec -T admin-api /app -bootstrap-first-employee 2>&1)" || boot_rc=$$?; \
+	case "$$boot_out" in \
+	  *bootstrapped*) \
+	    echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey"; \
+	    echo "$$boot_pw" > apps/admin/e2e/.bootstrap-password; \
+	    rm -f apps/admin/e2e/.admin-state.json; \
+	    echo "one-time password saved to apps/admin/e2e/.bootstrap-password (gitignored)";; \
+	  *exists*) \
+	    [ -f apps/admin/e2e/.admin-state.json ] || { \
+	      echo "the first Employee already exists but apps/admin/e2e/.admin-state.json is missing:" >&2; \
+	      echo "recreate the stack volumes, or export E2E_BOOTSTRAP_EMAIL/E2E_BOOTSTRAP_PASSWORD" >&2; exit 1; } ;; \
+	  *) echo "bootstrap RPC failed (rc=$$boot_rc): $$boot_out" >&2; exit 1;; \
+	esac; \
 	cd apps/admin && npx playwright test
 
 # Health-check the test-profile chain nodes: each must answer its

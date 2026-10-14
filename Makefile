@@ -142,7 +142,7 @@ lint:
 	@hits=$$(grep -rnF 'Status()[' --include='*.go' cmd internal); if [ -n "$$hits" ]; then \
 		echo "positional Status() index — map order is random; select by market (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@hits=$$( { grep -rnE '(DROP|CREATE) DATABASE (IF EXISTS )?malxchange_[a-z0-9]+' --include='*_test.go' internal; \
-	           grep -rnE '"malxchange_it[a-z0-9_]*"' --include='*_test.go' internal | grep -vE 'malxchange_it[a-z]*_" \+ hex'; } ); if [ -n "$$hits" ]; then \
+	           grep -rnE '"malxchange_it[a-z0-9_]*"' --include='*_test.go' internal | grep -vE 'malxchange_it[a-z]*(_" \+ hex|" \+ variant)'; } ); if [ -n "$$hits" ]; then \
 		echo "fixed IT database name — mint a per-binary throwaway (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@hits=$$(grep -nF 'addr + "/healthz"' internal/service/service.go); if [ -n "$$hits" ]; then \
 		echo "self-healthcheck probes liveness (/healthz answers ok unconditionally) — probe /readyz or a dead worker reads healthy (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi

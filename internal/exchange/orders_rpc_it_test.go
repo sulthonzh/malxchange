@@ -60,37 +60,9 @@ func newOrdersStack(t *testing.T) *ordersStack {
 	t.Helper()
 	ctx := context.Background()
 
-	// Unique throwaway DB per test binary run: sibling tickets' IT
-	// suites share the dev Postgres, so this stack never reuses the
-	// fixed name of the older exchange harness (#35).
-	suffix := make([]byte, 6)
-	if _, err := rand.Read(suffix); err != nil {
-		t.Fatal(err)
-	}
-	dbName := "malxchange_itx_" + hex.EncodeToString(suffix)
-
-	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx,
-		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	admin.Close()
-	t.Cleanup(func() {
-		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
-	})
+	// Unique throwaway DB per binary run, minted by the shared harness
+	// helper: sibling tickets' IT suites share the dev Postgres (#35).
+	dbName := mintITDB(t, "x")
 
 	exURL := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=exchange",
 		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName)

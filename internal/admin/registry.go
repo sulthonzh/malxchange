@@ -42,6 +42,24 @@ const (
 	PermViewColdTransfer   = "view:cold-transfer"   // GET    /api/cold-transfers
 	PermRecordColdTransfer = "record:cold-transfer" // POST   /api/cold-transfers
 
+	// Content (ticket #63): support's alone in the matrix — the
+	// ADR-0012 resolution gives announcements/help to support and to
+	// nobody else (finance/compliance are refused; super-admin has no
+	// content verbs). Publishing is an edit of the published flag, not
+	// a workflow of its own.
+	PermViewAnnouncement   = "view:announcement"    // GET    /api/announcements
+	PermCreateAnnouncement = "create:announcement"  // POST   /api/announcements
+	PermEditAnnouncement   = "edit:announcement"    // PUT    /api/announcements/{id}
+	PermDeleteAnnouncement = "delete:announcement"  // DELETE /api/announcements/{id}
+	PermViewHelpCategory   = "view:help-category"   // GET    /api/help/categories
+	PermCreateHelpCategory = "create:help-category" // POST  /api/help/categories
+	PermEditHelpCategory   = "edit:help-category"   // PUT    /api/help/categories/{id}
+	PermDeleteHelpCategory = "delete:help-category" // DELETE /api/help/categories/{id}
+	PermViewHelpArticle    = "view:help-article"    // GET    /api/help/articles
+	PermCreateHelpArticle  = "create:help-article"  // POST   /api/help/articles
+	PermEditHelpArticle    = "edit:help-article"    // PUT    /api/help/articles/{id}
+	PermDeleteHelpArticle  = "delete:help-article"  // DELETE /api/help/articles/{id}
+
 	// Member + KYC surfaces (issue #58): support owns member
 	// view/lock, compliance owns KYC review + member TOTP reset
 	// (Step-up), super-admin the read side (ADR-0012 matrix).
@@ -103,6 +121,22 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodPost, Path: "/api/hot-transfers/{id}/retry", Perm: PermRetryHotTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleHotTransferRetry},
 	{Method: http.MethodGet, Path: "/api/cold-transfers", Perm: PermViewColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListColdTransfers},
 	{Method: http.MethodPost, Path: "/api/cold-transfers", Perm: PermRecordColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleRecordColdTransfer},
+
+	// Content (ticket #63): support's alone in the matrix (ADR-0012).
+	// Mutating endpoints are audited by construction — the middleware's
+	// action is the permission string.
+	{Method: http.MethodGet, Path: "/api/announcements", Perm: PermViewAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleListAnnouncements},
+	{Method: http.MethodPost, Path: "/api/announcements", Perm: PermCreateAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateAnnouncement},
+	{Method: http.MethodPut, Path: "/api/announcements/{id}", Perm: PermEditAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditAnnouncement},
+	{Method: http.MethodDelete, Path: "/api/announcements/{id}", Perm: PermDeleteAnnouncement, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteAnnouncement},
+	{Method: http.MethodGet, Path: "/api/help/categories", Perm: PermViewHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleListHelpCategories},
+	{Method: http.MethodPost, Path: "/api/help/categories", Perm: PermCreateHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateHelpCategory},
+	{Method: http.MethodPut, Path: "/api/help/categories/{id}", Perm: PermEditHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditHelpCategory},
+	{Method: http.MethodDelete, Path: "/api/help/categories/{id}", Perm: PermDeleteHelpCategory, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteHelpCategory},
+	{Method: http.MethodGet, Path: "/api/help/articles", Perm: PermViewHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleListHelpArticles},
+	{Method: http.MethodPost, Path: "/api/help/articles", Perm: PermCreateHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleCreateHelpArticle},
+	{Method: http.MethodPut, Path: "/api/help/articles/{id}", Perm: PermEditHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleEditHelpArticle},
+	{Method: http.MethodDelete, Path: "/api/help/articles/{id}", Perm: PermDeleteHelpArticle, Matrix: []string{RoleSupport}, Handler: (*Server).handleDeleteHelpArticle},
 
 	// Member + KYC surfaces (issue #58): support owns member view/lock,
 	// compliance owns KYC review + member TOTP reset.

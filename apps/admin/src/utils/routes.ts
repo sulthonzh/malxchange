@@ -29,8 +29,10 @@ export interface AdminSection {
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
 // matrix. Members (#58, support's view/lock) and the Compliance KYC
-// queue landed with their registry entries; Finance, Content, Config,
-// and Audit grow with #59-#63.
+// queue landed with their registry entries, as did the Code channels'
+// Config section (#62); the Content section is #63 (support's
+// announcements and help center — categories and articles, publish
+// via the edit form's switch). Finance and Audit grow with #59-#61.
 export const adminSections: AdminSection[] = [
   {
     title: 'Members',
@@ -56,6 +58,14 @@ export const adminSections: AdminSection[] = [
       { path: '/operations/transfers', title: 'Transfers', permission: 'view:hot-transfer' },
       { path: '/operations/incidents', title: 'Incidents', permission: 'view:incident' },
       { path: '/operations/reconcile', title: 'Reconcile', permission: 'view:reconcile' },
+    ],
+  },
+  {
+    title: 'Content',
+    routes: [
+      { path: '/content/announcements', title: 'Announcements', permission: 'view:announcement' },
+      { path: '/content/help-categories', title: 'Help categories', permission: 'view:help-category' },
+      { path: '/content/help-articles', title: 'Help articles', permission: 'view:help-article' },
     ],
   },
   {

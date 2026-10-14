@@ -27,9 +27,11 @@ type bootstrapRequest struct {
 }
 
 // RegisterInternal mounts the internal RPC (prefix-free pattern; the
-// boot harness serves it at /internal/bootstrap/employee).
+// boot harness serves it at /internal/bootstrap/employee) plus the
+// member content read RPC (#63, /internal/content/*).
 func (s *Server) RegisterInternal(mux *http.ServeMux) {
 	mux.HandleFunc("POST /bootstrap/employee", s.audited(ActionCreateEmployee, s.handleBootstrapEmployee))
+	s.RegisterContentRPC(mux)
 }
 
 // handleBootstrapEmployee creates the first super-admin. The audit

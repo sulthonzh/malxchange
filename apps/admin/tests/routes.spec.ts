@@ -9,7 +9,7 @@ import { adminSections, visibleRoutes } from '../src/utils/routes'
 // UI-invented strings exist.
 
 describe('visibleRoutes', () => {
-  it('keeps every section for the full super-admin permission set', () => {
+  it('keeps every section for the full route-table permission set', () => {
     const permissions = [
       'view:employee',
       'create:employee',
@@ -27,6 +27,9 @@ describe('visibleRoutes', () => {
       'view:hot-transfer',
       'view:incident',
       'view:reconcile',
+      'view:announcement',
+      'view:help-category',
+      'view:help-article',
       // #58's read side: super-admin sees everything the table offers.
       'search:member',
       'view:member',
@@ -65,6 +68,9 @@ describe('visibleRoutes', () => {
   })
 
   it('renders nothing for a permission set outside the table', () => {
+    // A set no entry keys on (lock and review exist in the registry,
+    // but the route table has no entry keyed on them) intersects the
+    // table emptily — nothing renders.
     expect(visibleRoutes(adminSections, ['lock:member', 'review:kyc'])).toEqual([])
   })
 

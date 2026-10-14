@@ -1,0 +1,205 @@
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: admin-journey.spec.ts >> employee management from the UI: create with Step-up, reset password, disable
+- Location: e2e/admin-journey.spec.ts:216:1
+
+# Error details
+
+```
+Test timeout of 120000ms exceeded.
+```
+
+# Page snapshot
+
+```yaml
+- generic [ref=f1e3]:
+  - complementary [ref=f1e4]:
+    - paragraph [ref=f1e5]: malxchangeadmin
+    - navigation [ref=f1e6]:
+      - link "Home" [ref=f1e7] [cursor=pointer]:
+        - /url: /
+      - generic [ref=f1e8]:
+        - paragraph [ref=f1e9]: System
+        - link "Employees" [ref=f1e10] [cursor=pointer]:
+          - /url: /system/employees
+        - link "Roles" [ref=f1e11] [cursor=pointer]:
+          - /url: /system/roles
+      - generic [ref=f1e12]:
+        - paragraph [ref=f1e13]: Audit
+        - link "Audit log" [ref=f1e14] [cursor=pointer]:
+          - /url: /audit/log
+      - generic [ref=f1e15]:
+        - paragraph [ref=f1e16]: Config
+        - link "Code channels" [ref=f1e17] [cursor=pointer]:
+          - /url: /config/channels
+  - generic [ref=f1e18]:
+    - banner [ref=f1e19]:
+      - generic [ref=f1e20]:
+        - text: admin@exchange.example.com
+        - generic [ref=f1e21]: super-admin
+      - button "Sign out" [ref=f1e23] [cursor=pointer]
+    - main [ref=f1e25]:
+      - generic [ref=f1e26]:
+        - generic [ref=f1e27]:
+          - generic [ref=f1e28]:
+            - heading "Employees" [level=1] [ref=f1e29]
+            - paragraph [ref=f1e30]: Staff identity for the back office. Creating an Employee and resetting their password or two-factor demand a fresh authenticator code (Step-up) and hand over a one-time credential the Employee must rotate at first sign-in.
+          - button "Create Employee" [ref=f1e31] [cursor=pointer]
+        - generic [ref=f1e34]:
+          - table [ref=f1e36]:
+            - rowgroup [ref=f1e43]:
+              - row [ref=f1e44]:
+                - columnheader "Email" [ref=f1e45]
+                - columnheader "Role" [ref=f1e47]
+                - columnheader "Status" [ref=f1e49]
+                - columnheader "Created" [ref=f1e51]
+                - columnheader "Actions" [ref=f1e53]
+          - table [ref=f1e59]:
+            - rowgroup [ref=f1e66]:
+              - row [ref=f1e67]:
+                - cell "admin@exchange.example.com" [ref=f1e68]
+                - cell "super-admin" [ref=f1e70]
+                - cell "Enabled" [ref=f1e72]
+                - cell "Oct 14, 2026, 1:03 PM" [ref=f1e76]
+                - cell [ref=f1e78]:
+                  - generic [ref=f1e79]:
+                    - button "Disable" [disabled] [ref=f1e81]
+                    - button "Reset password" [ref=f1e83] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e85] [cursor=pointer]
+                    - button "Change role" [disabled] [ref=f1e88]
+              - row [ref=f1e90]:
+                - cell "support-e2e-089329e5@exchange.example.com" [ref=f1e91]
+                - cell "support" [ref=f1e93]
+                - cell "Enabled" [ref=f1e95]
+                - cell "Oct 14, 2026, 2:16 PM" [ref=f1e99]
+                - cell [ref=f1e101]:
+                  - generic [ref=f1e102]:
+                    - button "Disable" [ref=f1e103] [cursor=pointer]
+                    - button "Reset password" [ref=f1e105] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e107] [cursor=pointer]
+                    - button "Change role" [ref=f1e109] [cursor=pointer]
+              - row [ref=f1e111]:
+                - cell "support-e2e-5f3c3959@exchange.example.com" [ref=f1e112]
+                - cell "support" [ref=f1e114]
+                - cell "Enabled" [ref=f1e116]
+                - cell "Oct 14, 2026, 1:09 PM" [ref=f1e120]
+                - cell [ref=f1e122]:
+                  - generic [ref=f1e123]:
+                    - button "Disable" [ref=f1e124] [cursor=pointer]
+                    - button "Reset password" [ref=f1e126] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e128] [cursor=pointer]
+                    - button "Change role" [ref=f1e130] [cursor=pointer]
+              - row [ref=f1e132]:
+                - cell "support-e2e-76a8a432@exchange.example.com" [ref=f1e133]
+                - cell "support" [ref=f1e135]
+                - cell "Enabled" [ref=f1e137]
+                - cell "Oct 14, 2026, 2:26 PM" [ref=f1e141]
+                - cell [ref=f1e143]:
+                  - generic [ref=f1e144]:
+                    - button "Disable" [ref=f1e145] [cursor=pointer]
+                    - button "Reset password" [ref=f1e147] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e149] [cursor=pointer]
+                    - button "Change role" [ref=f1e151] [cursor=pointer]
+              - row [ref=f1e153]:
+                - cell "support-e2e-7ccf378e@exchange.example.com" [ref=f1e154]
+                - cell "support" [ref=f1e156]
+                - cell "Enabled" [ref=f1e158]
+                - cell "Oct 14, 2026, 1:09 PM" [ref=f1e162]
+                - cell [ref=f1e164]:
+                  - generic [ref=f1e165]:
+                    - button "Disable" [ref=f1e166] [cursor=pointer]
+                    - button "Reset password" [ref=f1e168] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e170] [cursor=pointer]
+                    - button "Change role" [ref=f1e172] [cursor=pointer]
+              - row [ref=f1e174]:
+                - cell "support-e2e-8ce2ef5f@exchange.example.com" [ref=f1e175]
+                - cell "support" [ref=f1e177]
+                - cell "Enabled" [ref=f1e179]
+                - cell "Oct 14, 2026, 1:09 PM" [ref=f1e183]
+                - cell [ref=f1e185]:
+                  - generic [ref=f1e186]:
+                    - button "Disable" [ref=f1e187] [cursor=pointer]
+                    - button "Reset password" [ref=f1e189] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e191] [cursor=pointer]
+                    - button "Change role" [ref=f1e193] [cursor=pointer]
+              - row [ref=f1e195]:
+                - cell "support-e2e-a8b5d268@exchange.example.com" [ref=f1e196]
+                - cell "support" [ref=f1e198]
+                - cell "Enabled" [ref=f1e200]
+                - cell "Oct 14, 2026, 1:09 PM" [ref=f1e204]
+                - cell [ref=f1e206]:
+                  - generic [ref=f1e207]:
+                    - button "Disable" [ref=f1e208] [cursor=pointer]
+                    - button "Reset password" [ref=f1e210] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e212] [cursor=pointer]
+                    - button "Change role" [ref=f1e214] [cursor=pointer]
+              - row [ref=f1e216]:
+                - cell "support-e2e-b8dfaee0@exchange.example.com" [ref=f1e217]
+                - cell "support" [ref=f1e219]
+                - cell "Enabled" [ref=f1e221]
+                - cell "Oct 14, 2026, 1:09 PM" [ref=f1e225]
+                - cell [ref=f1e227]:
+                  - generic [ref=f1e228]:
+                    - button "Disable" [ref=f1e229] [cursor=pointer]
+                    - button "Reset password" [ref=f1e231] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e233] [cursor=pointer]
+                    - button "Change role" [ref=f1e235] [cursor=pointer]
+              - row [ref=f1e237]:
+                - cell "ui-staff-2a36ee14@exchange.example.com" [ref=f1e238]
+                - cell "finance" [ref=f1e240]
+                - cell "Enabled One-time password Two-factor not enrolled" [ref=f1e242]:
+                  - generic [ref=f1e243]:
+                    - generic [ref=f1e244]: Enabled
+                    - generic [ref=f1e246]: One-time password
+                    - generic [ref=f1e248]: Two-factor not enrolled
+                - cell "Oct 14, 2026, 2:26 PM" [ref=f1e250]
+                - cell [ref=f1e252]:
+                  - generic [ref=f1e253]:
+                    - button "Disable" [ref=f1e254] [cursor=pointer]
+                    - button "Reset password" [ref=f1e256] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e258] [cursor=pointer]
+                    - button "Change role" [ref=f1e260] [cursor=pointer]
+              - row [ref=f1e262]:
+                - cell "ui-staff-aa8c7ef5@exchange.example.com" [ref=f1e263]
+                - cell "finance" [ref=f1e265]
+                - cell "Enabled One-time password Two-factor not enrolled" [ref=f1e267]:
+                  - generic [ref=f1e268]:
+                    - generic [ref=f1e269]: Enabled
+                    - generic [ref=f1e271]: One-time password
+                    - generic [ref=f1e273]: Two-factor not enrolled
+                - cell "Oct 14, 2026, 2:28 PM" [ref=f1e275]
+                - cell [ref=f1e277]:
+                  - generic [ref=f1e278]:
+                    - button "Disable" [ref=f1e279] [cursor=pointer]
+                    - button "Reset password" [ref=f1e281] [cursor=pointer]
+                    - button "Reset two-factor" [ref=f1e283] [cursor=pointer]
+                    - button "Change role" [ref=f1e285] [cursor=pointer]
+        - dialog "Reset password" [ref=f1e288]:
+          - generic [active] [ref=f1e289]:
+            - generic [ref=f1e290]:
+              - heading "Reset password" [level=2] [ref=f1e291]
+              - button "Close this dialog" [ref=f1e292] [cursor=pointer]
+            - generic [ref=f1e296]:
+              - paragraph [ref=f1e297]:
+                - text: Resetting the password for
+                - strong [ref=f1e298]: ui-staff-aa8c7ef5@exchange.example.com
+                - text: revokes their live sessions.
+              - generic [ref=f1e299]:
+                - generic [ref=f1e300]:
+                  - generic [ref=f1e301]: New password (leave empty to generate one)
+                  - textbox "New password (leave empty to generate one)" [ref=f1e305]:
+                    - /placeholder: Generated and shown once when left empty
+                - generic [ref=f1e306]:
+                  - generic [ref=f1e307]: Authenticator code (Step-up)
+                  - textbox "Authenticator code (Step-up)" [ref=f1e311]:
+                    - /placeholder: 6-digit code
+            - generic [ref=f1e312]:
+              - button "Close" [ref=f1e313] [cursor=pointer]
+              - button "Reset" [ref=f1e315] [cursor=pointer]
+```

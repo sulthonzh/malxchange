@@ -134,16 +134,18 @@ describe('employees page', () => {
 
     await buttonIn(wrapper, 'Create Employee').trigger('click')
     await settle()
+    // The open dialog carries its scoping class (the journeys select it).
+    expect(wrapper.find('.dialog-create').exists()).toBe(true)
 
-    await wrapper.find('input[name="email"]').setValue('new@exchange.example.com')
-    await wrapper.find('input[name="password"]').setValue('One-time-Password-1')
+    await wrapper.find('.dialog-create input[name="email"]').setValue('new@exchange.example.com')
+    await wrapper.find('.dialog-create input[name="password"]').setValue('One-time-Password-1')
     await wrapper.find('.el-select__wrapper').trigger('click')
     await settle()
     const option = wrapper.findAll('.el-select-dropdown__item').find((item) => item.text() === 'finance')
     expect(option, 'no finance option in the Role select').toBeTruthy()
     await option!.trigger('click')
     await settle()
-    await wrapper.find('input[name="code"]').setValue('654321')
+    await wrapper.find('.dialog-create input[name="code"]').setValue('654321')
     await buttonIn(wrapper, 'Create').trigger('click')
     await flushPromises()
     await settle()
@@ -230,10 +232,12 @@ describe('employees page', () => {
     await buttonIn(wrapper, 'Reset').trigger('click')
     await settle()
     expect(reset).not.toHaveBeenCalled()
-    expect(wrapper.find('.dialog-error').exists()).toBe(true)
-    expect(wrapper.find('.dialog-error').text()).toContain('Enter a fresh authenticator code.')
+    expect(wrapper.find('.dialog-reset-password .dialog-error').exists()).toBe(true)
+    expect(wrapper.find('.dialog-reset-password .dialog-error').text()).toContain(
+      'Enter a fresh authenticator code.',
+    )
 
-    await wrapper.find('input[name="code"]').setValue('654321')
+    await wrapper.find('.dialog-reset-password input[name="code"]').setValue('654321')
     await buttonIn(wrapper, 'Reset').trigger('click')
     await flushPromises()
     await settle()

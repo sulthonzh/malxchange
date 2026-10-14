@@ -230,26 +230,28 @@ test('employee management from the UI: create with Step-up, reset password, disa
   // Create behind the Step-up prompt: an empty code is refused with a
   // visible sentence before anything is sent.
   const email = `ui-staff-${suffix()}@exchange.example.com`
+  // Closed dialogs stay in the DOM hidden — every interaction scopes
+  // to the open dialog's class, never the bare .el-dialog.
   await page.click('button:has-text("Create Employee")')
-  await page.fill('.el-dialog input[name="email"]', email)
-  await page.fill('.el-dialog input[name="password"]', 'E2e-one-time-1')
-  await page.click('.el-dialog .el-select__wrapper')
+  await page.fill('.dialog-create input[name="email"]', email)
+  await page.fill('.dialog-create input[name="password"]', 'E2e-one-time-1')
+  await page.click('.dialog-create .el-select__wrapper')
   await page.click('.el-select-dropdown__item:has-text("finance")')
-  await page.click('.el-dialog button:has-text("Create")')
-  await expect(page.locator('.el-dialog .dialog-error')).toContainText(
+  await page.click('.dialog-create button:has-text("Create")')
+  await expect(page.locator('.dialog-create .dialog-error')).toContainText(
     'Enter a fresh authenticator code.',
   )
-  await page.fill('.el-dialog input[name="code"]', await totpCode(root!.totpSecret))
-  await page.click('.el-dialog button:has-text("Create")')
+  await page.fill('.dialog-create input[name="code"]', await totpCode(root!.totpSecret))
+  await page.click('.dialog-create button:has-text("Create")')
   const row = page.locator('.employees-table tbody tr', { hasText: email })
   await expect(row).toBeVisible()
 
   // Reset password (Step-up): the generated one-time credential shows once.
   await row.locator('button:has-text("Reset password")').click()
-  await page.fill('.el-dialog input[name="code"]', await totpCode(root!.totpSecret))
-  await page.click('.el-dialog button:has-text("Reset")')
-  await expect(page.locator('.one-time-result')).toBeVisible()
-  await page.click('.el-dialog button:has-text("Close")')
+  await page.fill('.dialog-reset-password input[name="code"]', await totpCode(root!.totpSecret))
+  await page.click('.dialog-reset-password button:has-text("Reset")')
+  await expect(page.locator('.dialog-reset-password .one-time-result')).toBeVisible()
+  await page.click('.dialog-reset-password button:has-text("Close")')
 
   // Disable the new Employee; the server's refusal for a guarded row
   // would render in the page alert (the self row above never sends).

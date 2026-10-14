@@ -64,7 +64,7 @@
       </el-table-column>
     </el-table>
 
-    <el-dialog v-model="createVisible" title="Create Employee" width="480">
+    <el-dialog v-model="createVisible" title="Create Employee" class="dialog-create" width="480">
       <el-alert
         v-if="dialogError"
         class="dialog-error"
@@ -109,7 +109,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="resetPasswordVisible" title="Reset password" width="480">
+    <el-dialog v-model="resetPasswordVisible" title="Reset password" class="dialog-reset-password" width="480">
       <el-alert
         v-if="dialogError"
         class="dialog-error"
@@ -152,7 +152,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="resetTotpVisible" title="Reset two-factor" width="480">
+    <el-dialog v-model="resetTotpVisible" title="Reset two-factor" class="dialog-reset-totp" width="480">
       <el-alert
         v-if="dialogError"
         class="dialog-error"
@@ -176,7 +176,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="assignVisible" title="Change role" width="480">
+    <el-dialog v-model="assignVisible" title="Change role" class="dialog-assign" width="480">
       <el-alert
         v-if="dialogError"
         class="dialog-error"

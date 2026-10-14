@@ -55,11 +55,25 @@ func newAPIClient(env *AdminEnv) *apiClient {
 	}
 }
 
+// apiCallCap bounds one proxied answer for lists, reviews, and
+// mutations; callLimit overrides it where an answer is legitimately
+// larger (KYC document evidence, #58).
+const apiCallCap = 1 << 20
+
 // call performs one JSON call against api's internal RPC, attributing
 // the acting Employee on the X-Mal-Actor header (the compose network's
 // convention on every mutating internal call). Non-2xx answers come
 // back as *apiUpstreamError, transport failures as errAPIDown.
+// apiCallCap bounds one answer; the KYC evidence surface (#58) reads
+// the same client through callLimit — a member may submit up to 5 MiB
+// per document image and base64 inflates 4/3, so an evidence answer
+// can exceed what lists and reviews ever need.
 func (c *apiClient) call(ctx context.Context, method, path, actor string, in, out any) error {
+	return c.callLimit(ctx, method, path, actor, in, out, apiCallCap)
+}
+
+// callLimit is call with a caller-chosen answer cap.
+func (c *apiClient) callLimit(ctx context.Context, method, path, actor string, in, out any, maxBytes int64) error {
 	var body io.Reader
 	if in != nil {
 		raw, err := json.Marshal(in)
@@ -83,7 +97,7 @@ func (c *apiClient) call(ctx context.Context, method, path, actor string, in, ou
 		return errAPIDown
 	}
 	defer resp.Body.Close()
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxBytes))
 	if err != nil {
 		return errAPIDown
 	}

@@ -24,7 +24,7 @@ type Server struct {
 	env    *AdminEnv
 	log    *slog.Logger
 	grants grantCache // roleID → granted permission strings, invalidated on grant edits
-	api    *apiClient // the api service's internal RPC (channel surface, #62)
+	api    *apiClient // the api service's internal RPC (channels #62, members #58); nil → those surfaces answer 503
 }
 
 // NewServer wires the surface onto a live pool.

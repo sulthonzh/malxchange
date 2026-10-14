@@ -58,10 +58,14 @@ func (a *memberAPI) RegisterSensitive(mux *http.ServeMux) {
 }
 
 // RegisterSensitiveAdmin mounts the internal admin RPCs admin-api calls
-// (member view/lock, KYC review, Authenticator reset). Registered
-// without the /internal prefix — the boot harness strips it.
+// (member view/lock, KYC review, Authenticator reset) plus the search
+// and KYC-queue reads (#58, member_admin.go). Registered without the
+// /internal prefix — the boot harness strips it.
 func (a *memberAPI) RegisterSensitiveAdmin(mux *http.ServeMux) {
+	mux.HandleFunc("GET /members", a.handleAdminMemberSearch)
+	mux.HandleFunc("GET /members/kyc/pending", a.handleAdminKYCPending)
 	mux.HandleFunc("GET /members/{id}", a.handleAdminMemberView)
+	mux.HandleFunc("GET /members/{id}/kyc/evidence", a.handleAdminKYCEvidence)
 	mux.HandleFunc("POST /members/{id}/lock", a.handleAdminMemberLock)
 	mux.HandleFunc("POST /members/{id}/unlock", a.handleAdminMemberUnlock)
 	mux.HandleFunc("POST /members/{id}/kyc/review", a.handleAdminKYCReview)

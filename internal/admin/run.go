@@ -16,6 +16,7 @@ func Run(ctx context.Context, d service.Deps) error {
 	if err := s.SeedRBAC(ctx); err != nil {
 		return fmt.Errorf("admin: seed rbac: %w", err)
 	}
+	d.Log.Info("rbac seeded", "endpoints", len(Endpoints))
 	s.RegisterPublic(d.Public)
 	s.RegisterInternal(d.Internal)
 	<-ctx.Done()

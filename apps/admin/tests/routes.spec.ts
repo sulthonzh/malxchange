@@ -26,6 +26,15 @@ describe('visibleRoutes', () => {
       'view:market',
       'edit:market',
       'view:engine',
+      // #58's read side: super-admin sees everything the table offers.
+      'search:member',
+      'view:member',
+      'view:kyc',
+      'view:kyc-evidence',
+      // #62: the Code channel surface is super-admin's alone.
+      'view:channel',
+      'activate:channel',
+      'deactivate:channel',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })
@@ -44,11 +53,26 @@ describe('visibleRoutes', () => {
     expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/ops/engine'])
   })
 
+  it('offers support the member surface only (the ADR-0012 matrix)', () => {
+    // Support's #58 grants: member view/lock — never the KYC queue.
+    const sections = visibleRoutes(adminSections, ['search:member', 'view:member', 'lock:member'])
+    expect(sections.map((s) => s.title)).toEqual(['Members'])
+    expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/members'])
+  })
+
+  it('offers compliance the KYC queue only (the ADR-0012 matrix)', () => {
+    const sections = visibleRoutes(adminSections, [
+      'view:kyc',
+      'view:kyc-evidence',
+      'review:kyc',
+      'reset:member-totp',
+    ])
+    expect(sections.map((s) => s.title)).toEqual(['Compliance'])
+    expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/kyc'])
+  })
+
   it('renders nothing for a permission set outside the table', () => {
-    // The support Role today: its ADR-0012 matrix grants (member
-    // view/lock, content) belong to endpoints later slices own — none
-    // exist in the registry yet, so its live set intersects emptily.
-    expect(visibleRoutes(adminSections, [])).toEqual([])
+    expect(visibleRoutes(adminSections, ['lock:member', 'review:kyc'])).toEqual([])
   })
 
   it('derives every entry from a registry permission string', () => {

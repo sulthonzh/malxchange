@@ -25,6 +25,7 @@ type Server struct {
 	log       *slog.Logger
 	grants    grantCache // roleID → granted permission strings, invalidated on grant edits
 	upstreams *upstreamSet
+	api       *apiClient // the api service's internal RPC (channels #62, members #58); nil → those surfaces answer 503
 }
 
 // NewServer wires the surface onto a live pool.
@@ -38,6 +39,7 @@ func NewServer(pool *pgxpool.Pool, env *AdminEnv, log *slog.Logger) *Server {
 		log:       log,
 		grants:    grantCache{sets: map[string]grantSet{}},
 		upstreams: loadUpstreams(sharedUpstreamEnv(), log),
+		api:       newAPIClient(env),
 	}
 }
 

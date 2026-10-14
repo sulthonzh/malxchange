@@ -28,10 +28,19 @@ export interface AdminSection {
 
 // The System section exists today because its endpoints do (#54):
 // Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Config (#61) holds the Coin and Market editors; Ops holds
-// the engine status page every Role can read. Members, Finance,
-// Compliance, Content, and Audit grow with #57-#63.
+// matrix. Members (#58), the Compliance KYC queue, the Code channels
+// (#62), and the Config editors + engine status (#61) landed with
+// their registry entries; Finance, Content, and Audit grow with
+// #59-#63.
 export const adminSections: AdminSection[] = [
+  {
+    title: 'Members',
+    routes: [{ path: '/members', title: 'Members', permission: 'search:member' }],
+  },
+  {
+    title: 'Compliance',
+    routes: [{ path: '/kyc', title: 'KYC review', permission: 'view:kyc' }],
+  },
   {
     title: 'System',
     routes: [
@@ -44,6 +53,10 @@ export const adminSections: AdminSection[] = [
     routes: [
       { path: '/config/coins', title: 'Coins', permission: 'view:coin' },
       { path: '/config/markets', title: 'Markets', permission: 'view:market' },
+      // Code channels (#62): status list, activation with per-driver
+      // credentials (Step-up on the save), deactivation. Super-admin's
+      // alone; email is always on and has no entry here.
+      { path: '/config/channels', title: 'Code channels', permission: 'view:channel' },
     ],
   },
   {

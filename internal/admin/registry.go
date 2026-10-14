@@ -24,6 +24,7 @@ const (
 	PermViewRole              = "view:role"               // GET    /api/roles
 	PermEditRole              = "edit:role"               // POST   /api/roles/{id}/grants
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
+
 	// Config surfaces (ticket #61): the Coin editor fronts the wallet's
 	// Coin config RPC, the Market editor the exchange's Market-config
 	// RPC; engine status is the all-Roles read view. ADR-0012 matrix:
@@ -34,6 +35,23 @@ const (
 	PermViewMarket = "view:market" // GET /api/markets
 	PermEditMarket = "edit:market" // PUT /api/markets/{symbol}
 	PermViewEngine = "view:engine" // GET /api/engine
+
+	// Member + KYC surfaces (issue #58): support owns member
+	// view/lock, compliance owns KYC review + member TOTP reset
+	// (Step-up), super-admin the read side (ADR-0012 matrix).
+	PermSearchMember    = "search:member"     // GET    /api/members
+	PermViewMember      = "view:member"       // GET    /api/members/{id}
+	PermLockMember      = "lock:member"       // POST   /api/members/{id}/lock
+	PermUnlockMember    = "unlock:member"     // POST   /api/members/{id}/unlock
+	PermViewKYC         = "view:kyc"          // GET    /api/kyc/applications
+	PermViewKYCEvidence = "view:kyc-evidence" // GET    /api/kyc/applications/{memberId}/evidence
+	PermReviewKYC       = "review:kyc"        // POST   /api/kyc/applications/{memberId}/review
+	PermResetMemberTOTP = "reset:member-totp" // POST   /api/members/{id}/totp/reset (Step-up)
+
+	// Code channels (issue #62, ADR-0006): super-admin's alone.
+	PermViewChannel       = "view:channel"       // GET    /api/channels
+	PermActivateChannel   = "activate:channel"   // POST   /api/channels/{name}/activate (Step-up)
+	PermDeactivateChannel = "deactivate:channel" // POST   /api/channels/{name}/deactivate
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -75,6 +93,23 @@ var Endpoints = []Endpoint{
 	// The engine status page is the one surface every Role sees
 	// (ADR-0012 matrix: read-side incl. engine status for all four).
 	{Method: http.MethodGet, Path: "/api/engine", Perm: PermViewEngine, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance, RoleSupport}, Handler: (*Server).handleEngineStatus},
+
+	{Method: http.MethodGet, Path: "/api/members", Perm: PermSearchMember, Matrix: []string{RoleSupport, RoleSuperAdmin}, Handler: (*Server).handleSearchMembers},
+	{Method: http.MethodGet, Path: "/api/members/{id}", Perm: PermViewMember, Matrix: []string{RoleSupport, RoleSuperAdmin}, Handler: (*Server).handleMemberView},
+	{Method: http.MethodPost, Path: "/api/members/{id}/lock", Perm: PermLockMember, Matrix: []string{RoleSupport}, Handler: (*Server).handleMemberLock},
+	{Method: http.MethodPost, Path: "/api/members/{id}/unlock", Perm: PermUnlockMember, Matrix: []string{RoleSupport}, Handler: (*Server).handleMemberUnlock},
+	{Method: http.MethodGet, Path: "/api/kyc/applications", Perm: PermViewKYC, Matrix: []string{RoleCompliance, RoleSuperAdmin}, Handler: (*Server).handleKYCQueue},
+	{Method: http.MethodGet, Path: "/api/kyc/applications/{memberId}/evidence", Perm: PermViewKYCEvidence, Matrix: []string{RoleCompliance, RoleSuperAdmin}, Handler: (*Server).handleKYCEvidence},
+	{Method: http.MethodPost, Path: "/api/kyc/applications/{memberId}/review", Perm: PermReviewKYC, Matrix: []string{RoleCompliance}, Handler: (*Server).handleKYCReview},
+	{Method: http.MethodPost, Path: "/api/members/{id}/totp/reset", Perm: PermResetMemberTOTP, Matrix: []string{RoleCompliance}, Handler: (*Server).handleMemberTOTPReset},
+
+	// Code channels (#62, ADR-0006): state and credential validation
+	// live in api; this surface is the gated front. Super-admin's alone
+	// in the ADR-0012 matrix. Activation carries the credential save,
+	// so it demands Step-up inside the handler.
+	{Method: http.MethodGet, Path: "/api/channels", Perm: PermViewChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListChannels},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/activate", Perm: PermActivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleActivateChannel},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/deactivate", Perm: PermDeactivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeactivateChannel},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

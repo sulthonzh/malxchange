@@ -27,6 +27,9 @@ describe('visibleRoutes', () => {
       'view:hot-transfer',
       'view:incident',
       'view:reconcile',
+      'view:channel',
+      'activate:channel',
+      'deactivate:channel',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })

@@ -241,6 +241,9 @@ services:
       # transfers, reconcile
       MAL_ADMIN_WALLET_BASE_URL: ${MAL_ADMIN_WALLET_BASE_URL:-http://wallet:8080/internal}
       MAL_ADMIN_WALLET_TIMEOUT: ${MAL_ADMIN_WALLET_TIMEOUT:-5s}
+      # Code channel surface (issue #62): the api service's internal RPC
+      MAL_ADMIN_API_BASE_URL: ${MAL_ADMIN_API_BASE_URL:-http://api:8080/internal}
+      MAL_ADMIN_API_TIMEOUT: ${MAL_ADMIN_API_TIMEOUT:-5s}
 
   # The admin app (spec #25, issue #56): Nuxt 3 SSR behind Caddy on
   # the admin domain; /api/* on that vhost proxies to admin-api. The

@@ -49,6 +49,14 @@ export const adminSections: AdminSection[] = [
       { path: '/operations/reconcile', title: 'Reconcile', permission: 'view:reconcile' },
     ],
   },
+  {
+    // Config (#62): the Code channel registry — status list, activation
+    // with per-driver credentials (Step-up on the save), deactivation.
+    // Super-admin's alone in the matrix; email is always on and has no
+    // entry here.
+    title: 'Config',
+    routes: [{ path: '/config/channels', title: 'Code channels', permission: 'view:channel' }],
+  },
 ]
 
 /** Sections whose entries the permission set admits; emptied sections drop. */

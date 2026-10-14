@@ -24,6 +24,7 @@ type Server struct {
 	env       *AdminEnv
 	log       *slog.Logger
 	grants    grantCache    // roleID → granted permission strings, invalidated on grant edits
+	api       *apiClient    // the api service's internal RPC (channel surface, #62)
 	opsWallet *walletClient // wallet internal RPC (ticket #60's custody/ops surface)
 }
 
@@ -35,6 +36,7 @@ func NewServer(pool *pgxpool.Pool, env *AdminEnv, log *slog.Logger) *Server {
 	return &Server{
 		pool: pool, env: env, log: log,
 		grants:    grantCache{sets: map[string]grantSet{}},
+		api:       newAPIClient(env),
 		opsWallet: newWalletClient(env.WalletBaseURL, env.WalletTimeout),
 	}
 }

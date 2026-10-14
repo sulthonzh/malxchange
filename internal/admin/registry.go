@@ -41,6 +41,9 @@ const (
 	PermRetryHotTransfer   = "retry:hot-transfer"   // POST   /api/hot-transfers/{id}/retry (Step-up)
 	PermViewColdTransfer   = "view:cold-transfer"   // GET    /api/cold-transfers
 	PermRecordColdTransfer = "record:cold-transfer" // POST   /api/cold-transfers
+	PermViewChannel        = "view:channel"         // GET    /api/channels
+	PermActivateChannel    = "activate:channel"     // POST   /api/channels/{name}/activate (Step-up)
+	PermDeactivateChannel  = "deactivate:channel"   // POST   /api/channels/{name}/deactivate
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -86,6 +89,14 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodPost, Path: "/api/hot-transfers/{id}/retry", Perm: PermRetryHotTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleHotTransferRetry},
 	{Method: http.MethodGet, Path: "/api/cold-transfers", Perm: PermViewColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListColdTransfers},
 	{Method: http.MethodPost, Path: "/api/cold-transfers", Perm: PermRecordColdTransfer, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleRecordColdTransfer},
+
+	// Code channels (#62, ADR-0006): state and credential validation
+	// live in api; this surface is the gated front. Super-admin's alone
+	// in the ADR-0012 matrix. Activation carries the credential save,
+	// so it demands Step-up inside the handler.
+	{Method: http.MethodGet, Path: "/api/channels", Perm: PermViewChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListChannels},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/activate", Perm: PermActivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleActivateChannel},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/deactivate", Perm: PermDeactivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeactivateChannel},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

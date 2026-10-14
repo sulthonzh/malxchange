@@ -138,7 +138,7 @@ func RunBootstrapClient(ctx context.Context) int {
 		return 0
 	default:
 		raw, _ := io.ReadAll(resp.Body)
-		fmt.Fprintf(os.Stderr, "bootstrap: admin-api answered %d: %s\n", resp.StatusCode, raw)
+		fmt.Printf("bootstrap-refused %d: %s\n", resp.StatusCode, raw)
 		return 1
 	}
 }

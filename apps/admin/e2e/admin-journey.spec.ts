@@ -204,6 +204,8 @@ test('unknown routes answer the 404 page', async ({ page }) => {
 /** The super-admin column's index in the grant editor (roles arrive name-sorted). */
 async function superAdminColumnIndex(page: Page): Promise<number> {
   const headers = page.locator('.editor-table thead th')
+  // The editor renders after the roles + catalog fetches land.
+  await expect(headers.filter({ hasText: 'super-admin' })).toBeVisible()
   const count = await headers.count()
   for (let i = 0; i < count; i += 1) {
     if ((await headers.nth(i).innerText()).trim() === 'super-admin') {
@@ -270,9 +272,14 @@ test('employee management from the UI: create with Step-up, reset password, disa
     page.click('button:has-text("Search")'),
   ])
   expect(searchResponse.status()).toBe(200)
-  const createRow = page.locator('.audit-table tbody tr', { hasText: 'create:employee' })
+  // Every create ever logged matches the action filter (the database
+  // keeps prior runs' rows); this run's row is the one whose after view
+  // carries this Employee's email.
+  const createRow = page
+    .locator('.audit-table tbody tr')
+    .filter({ hasText: 'create:employee' })
+    .filter({ hasText: email })
   await expect(createRow).toHaveCount(1)
-  await expect(createRow).toContainText(email)
   await expect(createRow.locator('.after-json')).toContainText(email)
   await expect(createRow.locator('.before-json')).toContainText('—')
 })

@@ -1,0 +1,10 @@
+# Keep the image build hermetic: dependencies install inside the image
+# (npm ci); local artifacts, test state, and secrets never enter the
+# build context.
+node_modules
+.nuxt
+.output
+.env
+e2e/.admin-state.json
+tests
+playwright.config.ts

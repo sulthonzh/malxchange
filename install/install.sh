@@ -136,7 +136,7 @@ BOOT_EMAIL="${BOOT_EMAIL:-admin@${DOMAIN}}"
 BOOT_PASS="$(gen)"
 BOOT_RC=0
 BOOT_OUT="$(printf '{"email":"%s","password":"%s"}\n' "${BOOT_EMAIL}" "${BOOT_PASS}" |
-    (cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml exec -T admin /app -bootstrap-first-employee))" || BOOT_RC=$?
+    (cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml exec -T admin-api /app -bootstrap-first-employee))" || BOOT_RC=$?
 case "${BOOT_RC}" in
     0)
         case "${BOOT_OUT}" in
@@ -166,7 +166,7 @@ esac
 
 say "verifying services"
 FAILED=0
-for svc in postgres redpanda redpanda-console api exchange market wallet admin caddy pg-backup; do
+for svc in postgres redpanda redpanda-console api exchange market wallet admin-api admin caddy pg-backup; do
     STATE="$(cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml ps "$svc" --format '{{.State}} {{.Health}}' 2>/dev/null | head -1)"
     case "${STATE}" in
         running*|exited*) printf '  %-16s %s\n' "$svc" "${STATE}";;
@@ -186,7 +186,7 @@ say "install complete"
 cat <<SUMMARY
 
   member surface    https://${DOMAIN}            (web app lands with issue #24)
-  admin surface     https://${ADMIN_DOMAIN}    (admin app lands with issue #25)
+  admin surface     https://${ADMIN_DOMAIN}
   broker console    ssh -L 8090:localhost:8090 <this-host>  → http://localhost:8090
   credentials       ${CRED_FILE} (root-only)
   environment       ${ENV_FILE}

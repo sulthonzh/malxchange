@@ -258,13 +258,21 @@ test('employee management from the UI: create with Step-up, reset password, disa
   await row.locator('button:has-text("Disable")').click()
   await expect(row).toContainText('Disabled')
 
-  // The audit log renders the trail with before/after JSON.
+  // The audit log renders the trail with before/after JSON. The action
+  // filter's response decides the table — wait for it, then assert the
+  // one create row (the unfiltered table also shows this Employee's
+  // reset and disable rows).
   await page.goto('/audit/log')
   await expect(page.locator('.audit-table tbody tr').first()).toBeVisible()
   await page.fill('input[name="action"]', 'create:employee')
-  await page.click('button:has-text("Search")')
-  const createRow = page.locator('.audit-table tbody tr', { hasText: email })
-  await expect(createRow).toBeVisible()
+  const [searchResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().includes('action=create%3Aemployee')),
+    page.click('button:has-text("Search")'),
+  ])
+  expect(searchResponse.status()).toBe(200)
+  const createRow = page.locator('.audit-table tbody tr', { hasText: 'create:employee' })
+  await expect(createRow).toHaveCount(1)
+  await expect(createRow).toContainText(email)
   await expect(createRow.locator('.after-json')).toContainText(email)
   await expect(createRow.locator('.before-json')).toContainText('—')
 })

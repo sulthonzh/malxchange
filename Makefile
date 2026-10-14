@@ -73,7 +73,8 @@ admin-e2e:
 	      export E2E_BOOTSTRAP_EMAIL E2E_BOOTSTRAP_PASSWORD; \
 	      echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey"; \
 	      echo "$$boot_pw" > apps/admin/e2e/.bootstrap-password; \
-	      echo "one-time password saved to apps/admin/e2e/.bootstrap-password (gitignored; reruns reuse via E2E_BOOTSTRAP_PASSWORD)";; \
+	      rm -f apps/admin/e2e/.admin-state.json; \
+	      echo "one-time password saved to apps/admin/e2e/.bootstrap-password (gitignored)";; \
 	    *exists*) echo "the first Employee already exists but apps/admin/e2e/.admin-state.json is missing:" >&2; \
 	       echo "recreate the stack volumes, or export E2E_BOOTSTRAP_EMAIL/E2E_BOOTSTRAP_PASSWORD" >&2; exit 1;; \
 	    *) echo "bootstrap RPC failed (rc=$$boot_rc): $$boot_out" >&2; exit 1;; \

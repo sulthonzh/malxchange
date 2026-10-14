@@ -59,6 +59,10 @@ export function useApi() {
     try {
       response = await fetch(`${apiBaseUrl}${path}`, {
         method: options.method ?? 'GET',
+        // The session is the httpOnly cookie (ADR-0012): same-origin it
+        // rides automatically; cross-origin (public base URL) it needs
+        // `include` — harmless same-origin.
+        credentials: 'include',
         headers: { ...forwarded, 'Content-Type': 'application/json' },
         body: options.body === undefined ? undefined : JSON.stringify(options.body),
       })

@@ -4,6 +4,7 @@ node_modules
 .env
 .DS_Store
 e2e/.admin-state.json
+e2e/.bootstrap-password
 
 # Playwright run artifacts (traces, error contexts) never belong in git.
 test-results/

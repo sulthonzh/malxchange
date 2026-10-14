@@ -69,8 +69,11 @@ admin-e2e:
 	  boot_rc=0; \
 	  boot_out="$$(printf '{"email":"%s","password":"%s"}' "$$boot_email" "$$boot_pw" | $(COMPOSE_TEST) exec -T admin-api /app -bootstrap-first-employee 2>&1)" || boot_rc=$$?; \
 	  case "$$boot_out" in \
-	    bootstrapped*) export E2E_BOOTSTRAP_EMAIL="$$boot_email" E2E_BOOTSTRAP_PASSWORD="$$boot_pw"; \
-	      echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey";; \
+	    bootstrapped*) E2E_BOOTSTRAP_EMAIL="$$boot_email" E2E_BOOTSTRAP_PASSWORD="$$boot_pw"; \
+	      export E2E_BOOTSTRAP_EMAIL E2E_BOOTSTRAP_PASSWORD; \
+	      echo "bootstrapped the first Employee ($$boot_email) for the admin e2e journey"; \
+	      echo "$$boot_pw" > apps/admin/e2e/.bootstrap-password; \
+	      echo "one-time password saved to apps/admin/e2e/.bootstrap-password (gitignored; reruns reuse via E2E_BOOTSTRAP_PASSWORD)";; \
 	    exists*) echo "the first Employee already exists but apps/admin/e2e/.admin-state.json is missing:" >&2; \
 	       echo "recreate the stack volumes, or export E2E_BOOTSTRAP_EMAIL/E2E_BOOTSTRAP_PASSWORD" >&2; exit 1;; \
 	    *) echo "bootstrap RPC failed (rc=$$boot_rc): $$boot_out" >&2; exit 1;; \

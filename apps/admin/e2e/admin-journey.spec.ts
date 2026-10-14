@@ -217,6 +217,7 @@ test('employee management from the UI: create with Step-up, reset password, disa
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
   await loginThroughUi(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+  await expect(page).toHaveURL(/\/$/)
   await page.goto('/system/employees')
   await expect(page.locator('h1')).toHaveText('Employees')
 
@@ -270,6 +271,7 @@ test('grant editor: a revoked grant bites the live session on its next request',
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
   await loginThroughUi(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+  await expect(page).toHaveURL(/\/$/)
   await page.goto('/system/employees')
   await expect(page.locator('.employees-table')).toBeVisible()
 

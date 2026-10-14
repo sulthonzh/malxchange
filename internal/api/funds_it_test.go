@@ -363,7 +363,8 @@ func (s *fundsStack) registerMember(email string) (token, memberID string) {
 func (s *fundsStack) fund(memberID, coin, amount string) {
 	s.t.Helper()
 	raw, err := json.Marshal(map[string]string{
-		"member": memberID, "coin": coin, "amount": amount, "reason": "it fixture"})
+		"member": memberID, "coin": coin, "amount": amount, "reason": "it fixture",
+		"key": "fixture-" + memberID + "-" + coin})
 	if err != nil {
 		s.t.Fatal(err)
 	}

@@ -173,7 +173,7 @@ import { compareMoney } from '~/utils/money'
 // paged document, of which the strip shows the first page.
 const MARKETS_PATH = '/market/markets'
 const TICKERS_PATH = '/market/tickers'
-const ANNOUNCEMENTS_PATH = '/api/announcements?pageNo=1&pageSize=5'
+const ANNOUNCEMENTS_PATH = '/announcements?pageNo=1&pageSize=5'
 
 interface MarketInfo {
   market: string

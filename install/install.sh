@@ -74,6 +74,9 @@ env_add() { # key, value — never overwrites an existing line (idempotency)
 }
 env_add MAL_DOMAIN                  "${DOMAIN}"
 env_add MAL_ADMIN_DOMAIN            "${ADMIN_DOMAIN}"
+# The first super-admin's login (one-time password generated at the
+# bootstrap phase below; the password itself never lives in .env).
+env_add MAL_ADMIN_BOOTSTRAP_EMAIL    "admin@${DOMAIN}"
 env_add MAL_PG_SUPERUSER            malxchange
 env_add MAL_PG_SUPERUSER_PASSWORD   "$(gen)"
 env_add MAL_PG_DATABASE             malxchange
@@ -116,11 +119,54 @@ say "starting the stack (healthcheck-gated)"
 (cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml ${PROFILE_ARGS[@]+"${PROFILE_ARGS[@]}"} up -d --wait)
 
 # ---------------------------------------------------------------- bootstrap
-# Phase: post-boot verification. Business seeding (first Employee, Coins,
-# Markets) is appended here by slices #21/#22/#25 as their tables land.
+# Phase: post-boot verification + business bootstrap. The first
+# Employee (spec #25, ADR-0007/ADR-0012) is created here; Coins and
+# Markets seeding is appended by slices #21/#22 as their tables land.
+
+# The first super-admin comes from one-time credentials generated here:
+# handed to the admin-api internal RPC over the compose network
+# (refused forever once any Employee exists), printed once below, and
+# appended to the root-only credentials file. First login forces a
+# password change + TOTP enrollment, so the printed password is
+# single-use. Env-file standing passwords and manual seed SQL are
+# rejected by ADR-0012.
+say "bootstrapping the first Employee"
+BOOT_EMAIL="$(grep -E '^MAL_ADMIN_BOOTSTRAP_EMAIL=' "${ENV_FILE}" | head -1 | cut -d= -f2-)"
+BOOT_EMAIL="${BOOT_EMAIL:-admin@${DOMAIN}}"
+BOOT_PASS="$(gen)"
+BOOT_RC=0
+BOOT_OUT="$(printf '{"email":"%s","password":"%s"}\n' "${BOOT_EMAIL}" "${BOOT_PASS}" |
+    (cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml exec -T admin-api /app -bootstrap-first-employee))" || BOOT_RC=$?
+case "${BOOT_RC}" in
+    0)
+        case "${BOOT_OUT}" in
+            bootstrapped*)
+                say "first Employee created: ${BOOT_EMAIL}"
+                {
+                    echo ""
+                    echo "# First Employee (one-time password — setup is forced on first login)"
+                    echo "# generated $(date -u +%FT%TZ); the printed password is single-use"
+                    echo "MAL_ADMIN_BOOTSTRAP_EMAIL=${BOOT_EMAIL}"
+                    echo "MAL_ADMIN_BOOTSTRAP_PASSWORD=${BOOT_PASS}"
+                } >>"${CRED_FILE}"
+                chmod 600 "${CRED_FILE}"
+                ;;
+            exists*)
+                say "first Employee already exists — bootstrap skipped (recover a lost one via install/break-glass.md, ADR-0012)"
+                ;;
+            *)
+                die "unexpected bootstrap answer: ${BOOT_OUT}"
+                ;;
+        esac
+        ;;
+    *)
+        die "bootstrap RPC failed (rc=${BOOT_RC}): ${BOOT_OUT}"
+        ;;
+esac
+
 say "verifying services"
 FAILED=0
-for svc in postgres redpanda redpanda-console api exchange market wallet admin caddy pg-backup; do
+for svc in postgres redpanda redpanda-console api exchange market wallet admin-api admin caddy pg-backup; do
     STATE="$(cd "${DEPLOY_DIR}" && docker compose -f docker-compose.yaml ps "$svc" --format '{{.State}} {{.Health}}' 2>/dev/null | head -1)"
     case "${STATE}" in
         running*|exited*) printf '  %-16s %s\n' "$svc" "${STATE}";;
@@ -140,7 +186,7 @@ say "install complete"
 cat <<SUMMARY
 
   member surface    https://${DOMAIN}            (web app lands with issue #24)
-  admin surface     https://${ADMIN_DOMAIN}    (admin app lands with issue #25)
+  admin surface     https://${ADMIN_DOMAIN}
   broker console    ssh -L 8090:localhost:8090 <this-host>  → http://localhost:8090
   credentials       ${CRED_FILE} (root-only)
   environment       ${ENV_FILE}
@@ -149,7 +195,9 @@ cat <<SUMMARY
   Next steps:
     1. Point DNS A records for ${DOMAIN} and ${ADMIN_DOMAIN} at this host
        (Caddy issues certificates on first request).
-    2. Key ceremony before accepting real deposits (issue #22 runbook).
-    3. First-run business bootstrap lands with issues #21/#22/#25.
+    2. Sign in to the admin surface with the first Employee's one-time
+       password (in ${CRED_FILE}) — you will be forced to set a new
+       password and enroll two-factor authentication.
+    3. Key ceremony before accepting real deposits (issue #22 runbook).
 
 SUMMARY

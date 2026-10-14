@@ -30,6 +30,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/config"
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/kafka"
@@ -482,7 +483,7 @@ func TestSessionSlidingExpiry(t *testing.T) {
 	fresh := body["token"].(string)
 	_, err = s.pool.Exec(context.Background(),
 		`UPDATE sessions SET expires_at = now() + interval '600 milliseconds' WHERE token_hash = $1`,
-		tokenDigest(fresh))
+		auth.TokenDigest(fresh))
 	if err != nil {
 		t.Fatal(err)
 	}

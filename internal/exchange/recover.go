@@ -23,21 +23,21 @@ func (e *Engine) Recover(ctx context.Context) error {
 		return err
 	}
 	e.Log.Info("RECOVER-DEBUG", "markets", len(cfgs))
-	for symbol, cfg := range cfgs {
+	for market, cfg := range cfgs {
 		restored, lastSeq, err := loadOpenOrders(ctx, e.Pool, cfg)
 		if err != nil {
-			return fmt.Errorf("recover %s: %w", symbol, err)
+			return fmt.Errorf("recover %s: %w", market, err)
 		}
 		book := engine.NewBook(cfg.Spec())
 		if err := book.Restore(restored, lastSeq); err != nil {
-			return fmt.Errorf("recover %s: %w", symbol, err)
+			return fmt.Errorf("recover %s: %w", market, err)
 		}
 		if !cfg.Enabled {
 			book.Batch([]engine.Command{{Halt: true}}) // cancels still flow
 		}
-		e.books[symbol] = book
-		e.cfgs[symbol] = cfg
-		e.ready[symbol] = true
+		e.books[market] = book
+		e.cfgs[market] = cfg
+		e.ready[market] = true
 
 		// Initial publishes (ADR-0010/0011, ticket #29): market's
 		// last-known plate refreshes from the Depth publish (a true cold
@@ -51,7 +51,7 @@ func (e *Engine) Recover(ctx context.Context) error {
 			}
 			return enqueueMarketUpdated(ctx, tx, e.OB, cfg)
 		}); err != nil {
-			return fmt.Errorf("recover %s: initial publish: %w", symbol, err)
+			return fmt.Errorf("recover %s: initial publish: %w", market, err)
 		}
 	}
 	return nil
@@ -62,7 +62,7 @@ func loadOpenOrders(ctx context.Context, pool *pgxpool.Pool, cfg MarketCfg) ([]e
 		SELECT id, member_id, side, kind,
 		       COALESCE(price::text,''),
 		       amount::text, filled_amount::text, turnover::text, seq
-		FROM orders WHERE market=$1 AND status='open' ORDER BY seq`, cfg.Symbol)
+		FROM orders WHERE market=$1 AND status='open' ORDER BY seq`, cfg.Market)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -119,8 +119,8 @@ func loadOpenOrders(ctx context.Context, pool *pgxpool.Pool, cfg MarketCfg) ([]e
 	}
 
 	var lastOrderSeq, lastFillSeq int64
-	_ = pool.QueryRow(ctx, `SELECT COALESCE(max(seq),0) FROM orders WHERE market=$1`, cfg.Symbol).Scan(&lastOrderSeq)
-	_ = pool.QueryRow(ctx, `SELECT COALESCE(max(seq),0) FROM fills WHERE market=$1`, cfg.Symbol).Scan(&lastFillSeq)
+	_ = pool.QueryRow(ctx, `SELECT COALESCE(max(seq),0) FROM orders WHERE market=$1`, cfg.Market).Scan(&lastOrderSeq)
+	_ = pool.QueryRow(ctx, `SELECT COALESCE(max(seq),0) FROM fills WHERE market=$1`, cfg.Market).Scan(&lastFillSeq)
 	last := lastOrderSeq
 	if lastFillSeq > last {
 		last = lastFillSeq

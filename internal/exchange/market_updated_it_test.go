@@ -3,7 +3,7 @@
 // market.updated integration tests (ticket #29): real Postgres + the
 // in-process Kafka broker. The seam under test is the topic: exchange
 // must surface the full Market row at boot (after Book recovery) and on
-// every accepted config-watch change, keyed by Market symbol, through
+// every accepted config-watch change, keyed by Market, through
 // the transactional outbox.
 package exchange
 
@@ -157,7 +157,7 @@ func wantSeedMarket(market, base, tick, lot string, sort int, featured bool) eve
 
 // TestBootPublishesMarketUpdatedPerMarket: on exchange boot one
 // market.updated per known Market lands on the topic, carrying the full
-// config row as decimal strings, keyed by Market symbol (acceptance 1).
+// config row as decimal strings, keyed by Market (acceptance 1).
 func TestBootPublishesMarketUpdatedPerMarket(t *testing.T) {
 	s := newStack(t)
 	createExchangeTopics(t, s)
@@ -211,7 +211,7 @@ func startConfigWatch(t *testing.T, s *itStack, every time.Duration) context.Can
 
 // TestConfigEditPublishesAndRefusalStaysSilent: an accepted operator edit
 // surfaces a new event within the config-watch interval, keyed by Market
-// symbol (acceptance 2); an edit the engine refuses (freeze guard:
+// (acceptance 2); an edit the engine refuses (freeze guard:
 // quantization change with resting orders) publishes nothing — consumers
 // must never see a row the engine rejected.
 func TestConfigEditPublishesAndRefusalStaysSilent(t *testing.T) {

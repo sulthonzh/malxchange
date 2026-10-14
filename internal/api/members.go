@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/outbox"
 )
@@ -47,14 +48,14 @@ func (a *memberAPI) RegisterMember(mux *http.ServeMux) {
 // access-auth-token session and rejects anonymous, expired, and revoked
 // requests with 401. The one implementation behind every surface's
 // gate (members, channels, orders, funds, favorites).
-func withMemberSession(pool *pgxpool.Pool, env *APIEnv, next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
+func withMemberSession(pool *pgxpool.Pool, env *APIEnv, next func(w http.ResponseWriter, r *http.Request, s auth.Session)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		token := r.Header.Get("access-auth-token")
 		if token == "" {
 			WriteError(w, http.StatusUnauthorized, "Sign in to continue.")
 			return
 		}
-		s, err := resolveSession(r.Context(), pool, token, env.SessionTTL)
+		s, err := auth.ResolveSession(r.Context(), pool, token, env.slidingSessions())
 		if err != nil {
 			WriteError(w, http.StatusUnauthorized, "Your session has expired. Sign in again.")
 			return
@@ -64,7 +65,7 @@ func withMemberSession(pool *pgxpool.Pool, env *APIEnv, next func(w http.Respons
 }
 
 // withSession is memberAPI's binding of the shared member gate.
-func (a *memberAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc {
+func (a *memberAPI) withSession(next func(w http.ResponseWriter, r *http.Request, s auth.Session)) http.HandlerFunc {
 	return withMemberSession(a.pool, a.env, next)
 }
 
@@ -169,7 +170,7 @@ func (a *memberAPI) handleRegister(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusBadRequest, "Enter the 6-digit code from your email.")
 		return
 	}
-	if err := checkPasswordPolicy(req.Password); err != nil {
+	if err := auth.CheckPasswordPolicy(req.Password); err != nil {
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -182,7 +183,7 @@ func (a *memberAPI) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var member memberSummary
 	err := pgx.BeginFunc(r.Context(), a.pool, func(tx pgx.Tx) error {
 		id := uuid.NewString()
-		hash, err := hashPassword(req.Password)
+		hash, err := auth.HashPassword(req.Password)
 		if err != nil {
 			return err
 		}
@@ -214,7 +215,7 @@ func (a *memberAPI) handleRegister(w http.ResponseWriter, r *http.Request) {
 	// The member row + event committed; signing in the fresh member is a
 	// separate step (a failed mint means "register then log in", never a
 	// half-registered member).
-	token, _, err := mintSession(r.Context(), a.pool, member.ID, "registration", a.env.SessionTTL)
+	token, _, err := auth.MintSession(r.Context(), a.pool, member.ID, "registration", a.env.slidingSessions())
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -231,7 +232,7 @@ func (a *memberAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	locked, err := loginLockedOut(r.Context(), a.pool, email, a.env.LockoutThreshold, a.env.LockoutWindow)
+	locked, err := auth.LoginLockedOut(r.Context(), a.pool, email, a.env.LockoutThreshold, a.env.LockoutWindow)
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -260,36 +261,36 @@ func (a *memberAPI) handleLogin(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusForbidden, "This account is locked. Contact support.")
 		return
 	}
-	if !verifyPassword(hash, req.Password) {
+	if !auth.VerifyPassword(hash, req.Password) {
 		// Only real member emails are counted: a stranger must not be
 		// able to lock an address they guessed.
-		if err := recordLoginFailure(r.Context(), a.pool, email); err != nil {
+		if err := auth.RecordLoginFailure(r.Context(), a.pool, email); err != nil {
 			writeErr(w, a.log, err)
 			return
 		}
 		WriteError(w, http.StatusUnauthorized, "Email or password is incorrect.")
 		return
 	}
-	token, _, err := mintSession(r.Context(), a.pool, member.ID, req.Device, a.env.SessionTTL)
+	token, _, err := auth.MintSession(r.Context(), a.pool, member.ID, req.Device, a.env.slidingSessions())
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
 	}
-	if err := clearLoginFailures(r.Context(), a.pool, email); err != nil {
+	if err := auth.ClearLoginFailures(r.Context(), a.pool, email); err != nil {
 		a.log.Error("clearing login failures", "err", err) // non-fatal
 	}
 	writeJSON(w, http.StatusOK, tokenResponse{Token: token, Member: member})
 }
 
-func (a *memberAPI) handleLogout(w http.ResponseWriter, r *http.Request, s Session) {
-	if err := revokeSession(r.Context(), a.pool, s.ID); err != nil {
+func (a *memberAPI) handleLogout(w http.ResponseWriter, r *http.Request, s auth.Session) {
+	if err := auth.RevokeSession(r.Context(), a.pool, s.ID); err != nil {
 		writeErr(w, a.log, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "signed out"})
 }
 
-func (a *memberAPI) handleMe(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleMe(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var member memberSummary
 	err := a.pool.QueryRow(r.Context(),
 		`SELECT id, email, status, to_char(created_at, 'YYYY-MM-DD"T"HH24:MI:SSOF')
@@ -306,8 +307,8 @@ func (a *memberAPI) handleMe(w http.ResponseWriter, r *http.Request, s Session) 
 	writeJSON(w, http.StatusOK, member)
 }
 
-func (a *memberAPI) handleSessions(w http.ResponseWriter, r *http.Request, s Session) {
-	live, err := listSessions(r.Context(), a.pool, s.MemberID)
+func (a *memberAPI) handleSessions(w http.ResponseWriter, r *http.Request, s auth.Session) {
+	live, err := auth.ListSessions(r.Context(), a.pool, s.MemberID)
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -325,8 +326,8 @@ func (a *memberAPI) handleSessions(w http.ResponseWriter, r *http.Request, s Ses
 	writeJSON(w, http.StatusOK, views)
 }
 
-func (a *memberAPI) handleRevokeAll(w http.ResponseWriter, r *http.Request, s Session) {
-	n, err := revokeAllSessions(r.Context(), a.pool, s.MemberID)
+func (a *memberAPI) handleRevokeAll(w http.ResponseWriter, r *http.Request, s auth.Session) {
+	n, err := auth.RevokeAllSessions(r.Context(), a.pool, s.MemberID)
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -362,16 +363,6 @@ func normalizeEmail(w http.ResponseWriter, raw string) (string, bool) {
 		return "", false
 	}
 	return email, true
-}
-
-func checkPasswordPolicy(pw string) error {
-	if len(pw) < 8 {
-		return errors.New("Choose a password of at least 8 characters.")
-	}
-	if len(pw) > 512 {
-		return errors.New("Choose a password of at most 512 characters.")
-	}
-	return nil
 }
 
 // formatTime renders a timestamp for member JSON in one place.

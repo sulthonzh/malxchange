@@ -1,0 +1,47 @@
+// The admin app's visual system (spec #25, issue #56): the member
+// app's ported palette (apps/web/src/assets/scss/main.scss) applied to
+// the back office — dark panels, the same accent gold. Values live as
+// CSS custom properties so every component style block reads the same
+// tokens without a build-time import chain.
+
+:root {
+  --body-bg: #0b1520;
+  --panel-bg: #192330;
+  --panel-header-bg: #27313e;
+  --panel-border: #27313e;
+  --text: #fff;
+  --text-secondary: #828ea1;
+  --text-muted: #61688a;
+  --accent: #f0a70a;
+  --accent-border: #ffa800;
+  --buy-green: #00b275;
+  --sell-red: #f15057;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--body-bg);
+  color: var(--text);
+  font-family:
+    'Helvetica Neue',
+    Helvetica,
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    Arial,
+    sans-serif;
+  font-size: 14px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+// element-plus joins the dark chrome.
+.el-tag {
+  --el-tag-bg-color: var(--panel-header-bg);
+  --el-tag-border-color: var(--panel-border);
+  --el-tag-text-color: var(--text-secondary);
+}

@@ -119,6 +119,22 @@ services:
       NUXT_PUBLIC_WS_URL: wss://exchange.example.com/ws
     ports:
       - "127.0.0.1:3000:3000"
+
+  # Admin E2E (spec #25, issue #56): the admin SSR container joins the
+  # e2e profile behind the same Caddy edge — the browser speaks
+  # https://admin.exchange.example.com (host-resolver mapped), where
+  # /api/* proxies to admin-api. SSR reaches admin-api over the
+  # compose network directly.
+  admin:
+    build: { context: ../apps/admin, dockerfile: Dockerfile }
+    image: malxchange/admin:latest
+    restart: unless-stopped
+    profiles: ["e2e"]
+    environment:
+      NUXT_ADMIN_API_BASE_URL: http://admin-api:8080
+      NUXT_PUBLIC_ADMIN_API_BASE_URL: https://admin.exchange.example.com
+    ports:
+      - "127.0.0.1:3100:3000"
   api:
     environment:
       MAL_API_SMTP_HOST: mailsink

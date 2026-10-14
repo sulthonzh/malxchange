@@ -165,8 +165,8 @@ func (e *Engine) validatePlace(ctx context.Context, tx pgx.Tx, cfg MarketCfg, in
 		var open int
 		if err := tx.QueryRow(ctx,
 			`SELECT count(*) FROM orders WHERE market=$1 AND member_id=$2 AND status='open'`,
-			cfg.Symbol, c.Member).Scan(&open); err == nil && open >= int(*cfg.MaxOpen) {
-			return fmt.Sprintf("open order cap (%d) reached on %s", *cfg.MaxOpen, cfg.Symbol)
+			cfg.Market, c.Member).Scan(&open); err == nil && open >= int(*cfg.MaxOpen) {
+			return fmt.Sprintf("open order cap (%d) reached on %s", *cfg.MaxOpen, cfg.Market)
 		}
 	}
 	return ""
@@ -175,7 +175,7 @@ func (e *Engine) validatePlace(ctx context.Context, tx pgx.Tx, cfg MarketCfg, in
 // placeToWire reconstructs the wire command from engine input for the
 // rule checks (amount/budget semantics differ per kind and side).
 func placeToWire(cfg MarketCfg, in engine.PlaceIn) *events.OrderCommand {
-	c := &events.OrderCommand{OrderID: in.ID, Member: in.Member, Market: cfg.Symbol, Side: in.Side.String(), Kind: in.Kind.String()}
+	c := &events.OrderCommand{OrderID: in.ID, Member: in.Member, Market: cfg.Market, Side: in.Side.String(), Kind: in.Kind.String()}
 	switch {
 	case in.Kind == engine.Limit:
 		c.Price, c.Amount = in.Price, in.Amount

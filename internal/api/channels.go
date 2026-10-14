@@ -19,6 +19,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/syaikhipin/malxchange/internal/auth"
 )
 
 // Code purposes this ticket adds to the purpose-scoped machinery
@@ -214,7 +216,7 @@ func telegramInactive(w http.ResponseWriter) {
 // handleTelegramLink hands the member their start-the-bot deep link:
 // the bot username resolved live from Telegram plus a fresh per-member
 // binding token (single-use, TTL'd like a code).
-func (a *channelAPI) handleTelegramLink(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *channelAPI) handleTelegramLink(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	creds, active, err := loadChannel(r.Context(), a.pool, ChannelTelegram)
 	if err != nil {
 		writeErr(w, a.log, err)
@@ -230,7 +232,7 @@ func (a *channelAPI) handleTelegramLink(w http.ResponseWriter, r *http.Request, 
 		WriteError(w, http.StatusServiceUnavailable, "We could not reach Telegram right now. Try again shortly.")
 		return
 	}
-	token, err := newSecret()
+	token, err := auth.NewSecret()
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -238,7 +240,7 @@ func (a *channelAPI) handleTelegramLink(w http.ResponseWriter, r *http.Request, 
 	_, err = a.pool.Exec(r.Context(),
 		`INSERT INTO channel_binding_tokens (token_hash, member_id, channel, expires_at)
 		 VALUES ($1, $2, $3, now() + make_interval(secs => $4::double precision))`,
-		tokenDigest(token), s.MemberID, ChannelTelegram, a.env.CodeTTL.Seconds())
+		auth.TokenDigest(token), s.MemberID, ChannelTelegram, a.env.CodeTTL.Seconds())
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -302,7 +304,7 @@ func (a *channelAPI) handleTelegramWebhook(w http.ResponseWriter, r *http.Reques
 		err := tx.QueryRow(r.Context(),
 			`UPDATE channel_binding_tokens SET used_at = now()
 			  WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()
-			  RETURNING member_id`, tokenDigest(fields[1])).Scan(&memberID)
+			  RETURNING member_id`, auth.TokenDigest(fields[1])).Scan(&memberID)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil // stale, expired, or forged token: acknowledge so Telegram stops retrying
 		}
@@ -336,7 +338,7 @@ func (a *channelAPI) handleTelegramWebhook(w http.ResponseWriter, r *http.Reques
 // handleTelegramCode issues a Telegram Verification code — but only for
 // a member whose chat the webhook bound; codes to unbound members are
 // rejected before anything is sent.
-func (a *channelAPI) handleTelegramCode(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *channelAPI) handleTelegramCode(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	creds, active, err := loadChannel(r.Context(), a.pool, ChannelTelegram)
 	if err != nil {
 		writeErr(w, a.log, err)
@@ -398,7 +400,7 @@ func (a *channelAPI) handleTelegramCode(w http.ResponseWriter, r *http.Request, 
 // handleTelegramVerify consumes a delivered Telegram code, proving the
 // member reads the bound chat. It gates nothing (ADR-0006: channel
 // codes never gate funds) — later sensitive flows build on the check.
-func (a *channelAPI) handleTelegramVerify(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *channelAPI) handleTelegramVerify(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Code string `json:"code"`
 	}
@@ -420,7 +422,7 @@ func (a *channelAPI) handleTelegramVerify(w http.ResponseWriter, r *http.Request
 // phone, and the code goes to the activated phone channel (sms
 // preferred over whatsapp). The sensitive-flow matrix (ticket #39)
 // consumes these purpose-scoped codes to complete the binding.
-func (a *channelAPI) handlePhoneCode(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *channelAPI) handlePhoneCode(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Phone string `json:"phone"`
 	}

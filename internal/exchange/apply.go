@@ -26,7 +26,7 @@ func applyEvents(ctx context.Context, tx pgx.Tx, cfg MarketCfg, evs []engine.Eve
 			}
 		}
 		if ev.Canceled != nil {
-			if err := setOrderStatus(ctx, tx, cfg.Symbol, ev.Canceled.ID, "canceled"); err != nil {
+			if err := setOrderStatus(ctx, tx, cfg.Market, ev.Canceled.ID, "canceled"); err != nil {
 				return err
 			}
 			if err := enqueueCompleted(ctx, tx, ob, cfg, ev.Canceled, "canceled"); err != nil {
@@ -40,7 +40,7 @@ func applyEvents(ctx context.Context, tx pgx.Tx, cfg MarketCfg, evs []engine.Eve
 			}
 			// Progress accrues on BOTH rows immediately — an open order's
 			// filled_amount must never go stale (recovery reloads it).
-			if err := accrueFill(ctx, tx, cfg.Symbol, f, spec); err != nil {
+			if err := accrueFill(ctx, tx, cfg.Market, f, spec); err != nil {
 				return err
 			}
 			if err := enqueueFill(ctx, tx, ob, cfg, f, fees); err != nil {
@@ -48,7 +48,7 @@ func applyEvents(ctx context.Context, tx pgx.Tx, cfg MarketCfg, evs []engine.Eve
 			}
 		}
 		for _, done := range ev.Completed {
-			if err := setOrderStatus(ctx, tx, cfg.Symbol, done.ID, "filled"); err != nil {
+			if err := setOrderStatus(ctx, tx, cfg.Market, done.ID, "filled"); err != nil {
 				return err
 			}
 			if err := enqueueCompleted(ctx, tx, ob, cfg, done, "filled"); err != nil {
@@ -98,7 +98,7 @@ func insertOrder(ctx context.Context, tx pgx.Tx, cfg MarketCfg, o *engine.Placed
 		INSERT INTO orders (id, market, member_id, side, kind, price, amount, filled_amount, turnover, status, seq)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'open',$10)
 		ON CONFLICT (id) DO NOTHING`,
-		o.ID, cfg.Symbol, o.MemberID, o.Side.String(), o.Kind.String(), price, amt,
+		o.ID, cfg.Market, o.MemberID, o.Side.String(), o.Kind.String(), price, amt,
 		spec.AmountString(o.TradedLots), spec.MoneyString(o.TurnoverRaw), int64(o.Seq))
 	return err
 }
@@ -127,7 +127,7 @@ func insertFill(ctx context.Context, tx pgx.Tx, cfg MarketCfg, f engine.Fill, fe
 		                   taker_side, price, amount, turnover, buy_turnover, buy_fee, sell_fee)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
 		ON CONFLICT (market, seq) DO NOTHING`,
-		cfg.Symbol, int64(f.Seq), f.BuyOrderID, f.SellOrderID, f.BuyMemberID, f.SellMemberID,
+		cfg.Market, int64(f.Seq), f.BuyOrderID, f.SellOrderID, f.BuyMemberID, f.SellMemberID,
 		f.TakerSide.String(), spec.PriceString(f.PriceTicks), spec.AmountString(f.AmountLots),
 		spec.MoneyString(f.TurnoverRaw), spec.MoneyString(f.BuyTurnoverRaw),
 		spec.BaseMoneyString(fees.BuyFeeRaw), spec.MoneyString(fees.SellFeeRaw))
@@ -137,7 +137,7 @@ func insertFill(ctx context.Context, tx pgx.Tx, cfg MarketCfg, f engine.Fill, fe
 func enqueueFill(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCfg, f engine.Fill, fees fillFees) error {
 	spec := cfg.Spec()
 	data := events.TradeFill{
-		Market: cfg.Symbol, Seq: f.Seq,
+		Market: cfg.Market, Seq: f.Seq,
 		BuyOrderID: f.BuyOrderID, SellOrderID: f.SellOrderID,
 		BuyMemberID: f.BuyMemberID, SellMemberID: f.SellMemberID,
 		TakerSide:   f.TakerSide.String(),
@@ -148,42 +148,42 @@ func enqueueFill(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCf
 		BuyFee:      spec.BaseMoneyString(fees.BuyFeeRaw),
 		SellFee:     spec.MoneyString(fees.SellFeeRaw),
 	}
-	_, body, err := events.New(uuid.NewString(), cfg.Symbol, events.TopicTradeFill, time.Now().UTC(), data)
+	_, body, err := events.New(uuid.NewString(), cfg.Market, events.TopicTradeFill, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
-	return ob.Enqueue(ctx, tx, events.TopicTradeFill, cfg.Symbol, body)
+	return ob.Enqueue(ctx, tx, events.TopicTradeFill, cfg.Market, body)
 }
 
 func enqueueCompleted(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCfg, o *engine.PlacedOrder, status string) error {
 	spec := cfg.Spec()
 	data := events.OrderCompleted{
-		Market: cfg.Symbol, OrderID: o.ID, MemberID: o.MemberID,
+		Market: cfg.Market, OrderID: o.ID, MemberID: o.MemberID,
 		Side: o.Side.String(), Kind: o.Kind.String(), Status: status,
 		FilledAmount: spec.AmountString(o.TradedLots),
 		Turnover:     spec.MoneyString(o.TurnoverRaw),
 	}
-	_, body, err := events.New(uuid.NewString(), cfg.Symbol, events.TopicOrderCompleted, time.Now().UTC(), data)
+	_, body, err := events.New(uuid.NewString(), cfg.Market, events.TopicOrderCompleted, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
-	return ob.Enqueue(ctx, tx, events.TopicOrderCompleted, cfg.Symbol, body)
+	return ob.Enqueue(ctx, tx, events.TopicOrderCompleted, cfg.Market, body)
 }
 
 func enqueuePlate(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCfg, bids, asks *engine.Plate) error {
 	spec := cfg.Spec()
-	data := events.Plate{Market: cfg.Symbol}
+	data := events.Plate{Market: cfg.Market}
 	if bids != nil {
 		data.Bids = plateLevels(spec, *bids)
 	}
 	if asks != nil {
 		data.Asks = plateLevels(spec, *asks)
 	}
-	_, body, err := events.New(uuid.NewString(), cfg.Symbol, events.TopicMarketPlate, time.Now().UTC(), data)
+	_, body, err := events.New(uuid.NewString(), cfg.Market, events.TopicMarketPlate, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
-	return ob.Enqueue(ctx, tx, events.TopicMarketPlate, cfg.Symbol, body)
+	return ob.Enqueue(ctx, tx, events.TopicMarketPlate, cfg.Market, body)
 }
 
 func plateLevels(spec engine.MarketSpec, p engine.Plate) []events.PlateLevel {
@@ -197,10 +197,10 @@ func plateLevels(spec engine.MarketSpec, p engine.Plate) []events.PlateLevel {
 // enqueueMarketUpdated publishes the full Market row on market.updated
 // (ticket #29): the lawful source for market's Market copy and api's
 // listings, so no consumer needs a cross-schema read. Keyed by Market
-// symbol for per-Market ordering, like trade.fill.
+// for per-Market ordering, like trade.fill.
 func enqueueMarketUpdated(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg MarketCfg) error {
 	data := events.MarketUpdated{
-		Market: cfg.Symbol, BaseCoin: cfg.BaseCoin, QuoteCoin: cfg.QuoteCoin,
+		Market: cfg.Market, BaseCoin: cfg.BaseCoin, QuoteCoin: cfg.QuoteCoin,
 		BaseScale: cfg.BaseScale, QuoteScale: cfg.QuoteScale,
 		TickSize: cfg.TickSize, LotSize: cfg.LotSize,
 		MakerFeeRate: cfg.MakerFee, TakerFeeRate: cfg.TakerFee,
@@ -213,11 +213,11 @@ func enqueueMarketUpdated(ctx context.Context, tx pgx.Tx, ob *outbox.Outbox, cfg
 		Sort:                cfg.Sort, Zone: cfg.Zone, Featured: cfg.Featured,
 		MaxOpenOrders: cfg.MaxOpen, TTLSeconds: cfg.TTLSeconds,
 	}
-	_, body, err := events.New(uuid.NewString(), cfg.Symbol, events.TopicMarketUpdated, time.Now().UTC(), data)
+	_, body, err := events.New(uuid.NewString(), cfg.Market, events.TopicMarketUpdated, time.Now().UTC(), data)
 	if err != nil {
 		return err
 	}
-	return ob.Enqueue(ctx, tx, events.TopicMarketUpdated, cfg.Symbol, body)
+	return ob.Enqueue(ctx, tx, events.TopicMarketUpdated, cfg.Market, body)
 }
 
 // enqueueRejected publishes a placement rejection or unknown-cancel

@@ -16,7 +16,9 @@ import (
 
 // MarketCfg is a markets-table row, resolved into engine quantization.
 type MarketCfg struct {
-	Symbol       string
+	// Market is the glossary/wire name; the storage column keeps the
+	// spec-#21 name `markets.symbol` (waiver: column name only).
+	Market       string
 	BaseCoin     string
 	QuoteCoin    string
 	BaseScale    int
@@ -45,7 +47,7 @@ type MarketCfg struct {
 // Spec returns the engine's quantization view of the Market.
 func (m MarketCfg) Spec() engine.MarketSpec {
 	return engine.MarketSpec{
-		Symbol: m.Symbol, BaseScale: m.BaseScale, QuoteScale: m.QuoteScale,
+		Symbol: m.Market, BaseScale: m.BaseScale, QuoteScale: m.QuoteScale,
 		TickRaw: m.TickRaw, LotRaw: m.LotRaw,
 	}
 }
@@ -103,7 +105,9 @@ func LoadMarkets(ctx context.Context, pool *pgxpool.Pool) (map[string]MarketCfg,
 	out := map[string]MarketCfg{}
 	for rows.Next() {
 		var m MarketCfg
-		if err := rows.Scan(&m.Symbol, &m.BaseCoin, &m.QuoteCoin, &m.BaseScale, &m.QuoteScale,
+		// Waiver: the SELECT keeps the spec-#21 storage column name
+		// `symbol`; the Go field and the wire/glossary name are Market.
+		if err := rows.Scan(&m.Market, &m.BaseCoin, &m.QuoteCoin, &m.BaseScale, &m.QuoteScale,
 			&m.TickSize, &m.LotSize, &m.MakerFee, &m.TakerFee,
 			&m.MinPrice, &m.MaxPrice, &m.MinAmount, &m.MaxAmount, &m.MinTurnover,
 			&m.MarketOrders, &m.Enabled, &m.Visible, &m.Sort, &m.Zone, &m.Featured,
@@ -112,14 +116,14 @@ func LoadMarkets(ctx context.Context, pool *pgxpool.Pool) (map[string]MarketCfg,
 		}
 		tick, err := rawAtScale(m.TickSize, m.QuoteScale)
 		if err != nil || tick <= 0 {
-			return nil, fmt.Errorf("exchange: market %s: bad tick_size %q", m.Symbol, m.TickSize)
+			return nil, fmt.Errorf("exchange: market %s: bad tick_size %q", m.Market, m.TickSize)
 		}
 		lot, err := rawAtScale(m.LotSize, m.BaseScale)
 		if err != nil || lot <= 0 {
-			return nil, fmt.Errorf("exchange: market %s: bad lot_size %q", m.Symbol, m.LotSize)
+			return nil, fmt.Errorf("exchange: market %s: bad lot_size %q", m.Market, m.LotSize)
 		}
 		m.TickRaw, m.LotRaw = tick, lot
-		out[m.Symbol] = m
+		out[m.Market] = m
 	}
 	return out, rows.Err()
 }

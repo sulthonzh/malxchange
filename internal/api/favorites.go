@@ -9,6 +9,8 @@ import (
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/syaikhipin/malxchange/internal/auth"
 )
 
 // maxFavorites caps a watchlist: enough for any real star column, small
@@ -21,7 +23,7 @@ func (a *memberAPI) RegisterFavorites(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/uc/favorites", a.withSession(a.handleFavoritesReplace))
 }
 
-func (a *memberAPI) handleFavoritesList(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleFavoritesList(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	rows, err := a.pool.Query(r.Context(),
 		`SELECT market FROM market_favorites WHERE member_id = $1 ORDER BY created_at`, s.MemberID)
 	if err != nil {
@@ -41,7 +43,7 @@ func (a *memberAPI) handleFavoritesList(w http.ResponseWriter, r *http.Request, 
 	writeJSON(w, http.StatusOK, map[string]any{"markets": names})
 }
 
-func (a *memberAPI) handleFavoritesReplace(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleFavoritesReplace(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Markets []string `json:"markets"`
 	}

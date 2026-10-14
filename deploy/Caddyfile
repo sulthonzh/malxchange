@@ -26,6 +26,13 @@ https://{$MAL_ADMIN_DOMAIN} {
 	tls internal
 	encode zstd gzip
 
-	# admin app, SSR, REST-only (container lands with issue #25)
+	# admin REST (spec #25): the admin-api backend, same-origin with
+	# the app so the httpOnly session cookie rides browser requests —
+	# REST-only, no WebSocket on this vhost.
+	handle /api/* {
+		reverse_proxy admin-api:8080
+	}
+
+	# the admin app, SSR (spec #25, issue #56)
 	reverse_proxy admin:3000
 }

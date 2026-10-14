@@ -30,6 +30,7 @@ import (
 	"github.com/twmb/franz-go/pkg/kfake"
 	"github.com/twmb/franz-go/pkg/kgo"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/config"
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/kafka"
@@ -260,7 +261,7 @@ func (s *wsStack) token(member string) string {
 		 ON CONFLICT (id) DO NOTHING`, member, member+"@example.com"); err != nil {
 		s.t.Fatal(err)
 	}
-	tok, _, err := mintSession(context.Background(), s.pool, member, "it device", s.env.SessionTTL)
+	tok, _, err := auth.MintSession(context.Background(), s.pool, member, "it device", s.env.slidingSessions())
 	if err != nil {
 		s.t.Fatal(err)
 	}

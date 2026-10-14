@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 	"log/slog"
@@ -48,6 +49,7 @@ func RegisterRPC(mux *http.ServeMux, r *RPC) {
 
 	// admin seams (admin-api front; it enforces permission + step-up)
 	mux.HandleFunc("GET /withdrawals", r.listWithdrawals)
+	mux.HandleFunc("GET /withdrawals/{id}", r.withdrawalDetail)
 	mux.HandleFunc("POST /withdrawals/{id}/approve", r.withdrawalApprove)
 	mux.HandleFunc("POST /withdrawals/{id}/reject", r.withdrawalReject)
 	mux.HandleFunc("POST /withdrawals/{id}/retry", r.withdrawalRetry)
@@ -60,6 +62,9 @@ func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("POST /coins/{name}/sweep-pause", r.sweepPause)
 	mux.HandleFunc("GET /hot-transfers", r.listHotTransfers)
 	mux.HandleFunc("POST /hot-transfers", r.hotTransfer)
+	// The retry (ticket #60): RetryHotTransfer existed but had no route
+	// — failed hot→cold transfers were stuck until this seam.
+	mux.HandleFunc("POST /hot-transfers/{id}/retry", r.hotTransferRetry)
 	mux.HandleFunc("GET /cold-transfers", r.listColdTransfers)
 	mux.HandleFunc("POST /cold-transfers", r.coldTransfer)
 	mux.HandleFunc("POST /adjustments", r.adjustment)
@@ -226,6 +231,24 @@ func (r *RPC) listWithdrawals(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	writeJSON(w, list)
+}
+
+// withdrawalDetail is the audit queue's drill-down seam (spec #59):
+// one full withdrawal record; anything unresolvable — unknown id or a
+// malformed one — answers 404 (the queue only ever links real ids).
+func (r *RPC) withdrawalDetail(w http.ResponseWriter, req *http.Request) {
+	v, err := LoadWithdrawalDetail(req.Context(), r.DB, req.PathValue("id"))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) || errors.Is(err, errMalformedID) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": "no such withdrawal"})
+			return
+		}
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, v)
 }
 
 func (r *RPC) withdrawalApprove(w http.ResponseWriter, req *http.Request) {
@@ -423,6 +446,16 @@ func (r *RPC) hotTransfer(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, map[string]string{"id": h.ID, "coin": h.Coin, "state": h.State})
 }
 
+// hotTransferRetry re-arms a failed hot→cold transfer (ticket #60):
+// the signing/executor path picks it up again from pending.
+func (r *RPC) hotTransferRetry(w http.ResponseWriter, req *http.Request) {
+	if err := RetryHotTransfer(req.Context(), r.DB, req.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 func (r *RPC) listHotTransfers(w http.ResponseWriter, req *http.Request) {
 	list, err := ListHotTransfers(req.Context(), r.DB, req.URL.Query().Get("coin"))
 	if err != nil {
@@ -465,16 +498,22 @@ func (r *RPC) listColdTransfers(w http.ResponseWriter, req *http.Request) {
 
 // adjustment is the support-case path: a signed movement with a
 // mandatory reason, landing as an auditable Journal entry (spec #22
-// story 15) — never a SQL edit.
+// story 15) — never a SQL edit. The caller supplies the idempotency
+// key (wallet convention: producers own their keys, every journal row
+// carries a UNIQUE idem_key), so a retried HTTP call is a no-op
+// instead of a second movement; a fresh key from the admin app marks
+// each new submission. Replaying a key answers applied:false and
+// moves nothing.
 func (r *RPC) adjustment(w http.ResponseWriter, req *http.Request) {
 	in, err := decode[struct {
 		Member string `json:"member"`
 		Coin   string `json:"coin"`
 		Amount string `json:"amount"` // signed
 		Reason string `json:"reason"`
+		Key    string `json:"key"`
 	}](req)
-	if err != nil || in.Member == "" || in.Coin == "" || in.Amount == "" || in.Reason == "" {
-		http.Error(w, "need member, coin, signed amount, reason", http.StatusBadRequest)
+	if err != nil || in.Member == "" || in.Coin == "" || in.Amount == "" || in.Reason == "" || in.Key == "" {
+		http.Error(w, "need member, coin, signed amount, reason, key", http.StatusBadRequest)
 		return
 	}
 	amount, err := money.Parse(in.Amount)
@@ -487,13 +526,17 @@ func (r *RPC) adjustment(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 	err = Credit(req.Context(), r.DB, in.Member, in.Coin, KindAdjustment,
-		"adjustment: "+in.Reason, "adjust:"+time.Now().UTC().Format(time.RFC3339Nano),
+		"adjustment: "+in.Reason, "adjust:"+in.Key,
 		amount, "", req.Header.Get("X-Mal-Actor"))
+	if errors.Is(err, ErrAlreadyApplied) {
+		writeJSON(w, map[string]bool{"ok": true, "applied": false})
+		return
+	}
 	if err != nil {
 		writeErr(w, err)
 		return
 	}
-	writeJSON(w, map[string]bool{"ok": true})
+	writeJSON(w, map[string]bool{"ok": true, "applied": true})
 }
 
 func (r *RPC) listIncidents(w http.ResponseWriter, req *http.Request) {
@@ -509,14 +552,14 @@ func (r *RPC) listIncidents(w http.ResponseWriter, req *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, coin, kind, detail, status string
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&id, &coin, &kind, &detail, &status, &created); err != nil {
 			writeErr(w, err)
 			return
 		}
 		out = append(out, map[string]any{
 			"id": id, "coin": coin, "kind": kind, "detail": detail,
-			"status": status, "createdAt": string(created),
+			"status": status, "createdAt": created.UTC().Format(PgTimestampText),
 		})
 	}
 	writeJSON(w, out)

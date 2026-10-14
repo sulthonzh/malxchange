@@ -13,8 +13,11 @@ const NuxtLinkStub = {
 // so the component tests neutralize it globally. The cast widens the
 // global object by the auto-import slot — no narrower typed handle
 // exists for "globalThis plus the stub".
-const globalScope = globalThis as { useHead?: unknown }
+const globalScope = globalThis as { useHead?: unknown; definePageMeta?: unknown }
 globalScope.useHead = () => {}
+// Pages that take route params declare `definePageMeta({ props: true })`
+// (Nuxt compiles it away; the vitest node environment needs the stub).
+globalScope.definePageMeta = () => {}
 
 // Common mount for page SFCs: real element-plus (pagination etc.), the
 // NuxtLink stub, and page props passed directly (the pages declare route

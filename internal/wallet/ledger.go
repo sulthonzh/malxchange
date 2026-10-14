@@ -114,7 +114,7 @@ func classifyPost(err error) error {
 		case "23514": // check_violation: available/frozen would go negative
 			return fmt.Errorf("%w: %s", ErrInsufficientFunds, pgErr.ConstraintName)
 		case "23505": // unique_violation on journal.idem_key
-			if pgErr.ConstraintName == "journal_idem_key_unique" || pgErr.ConstraintName == "journal_idem_key" {
+			if pgErr.ConstraintName == "journal_idem_key_unique" || pgErr.ConstraintName == "journal_idem_key" || pgErr.ConstraintName == "journal_idem_key_key" {
 				return ErrAlreadyApplied
 			}
 		}

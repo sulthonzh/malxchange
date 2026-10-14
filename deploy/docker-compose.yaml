@@ -17,6 +17,9 @@ x-service: &service
       condition: service_healthy
     redpanda:
       condition: service_healthy
+    # SASL/Superuser provisioning is the broker's auth truth: services
+    # must not dial Kafka before this one-shot completes, or the first
+    # boot's SASL handshake fails closed and boot wedges silently.
     redpanda-setup:
       condition: service_completed_successfully
   healthcheck:

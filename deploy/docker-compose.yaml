@@ -251,8 +251,8 @@ services:
       MAL_ADMIN_API_BASE_URL: ${MAL_ADMIN_API_BASE_URL:-http://api:8080/internal}
       MAL_ADMIN_API_TIMEOUT: ${MAL_ADMIN_API_TIMEOUT:-5s}
       # Wallet internal RPC (issue #59): withdrawal audit + adjustment
-      MAL_ADMIN_WALLET_BASE_URL: ${MAL_ADMIN_WALLET_BASE_URL:-http://wallet:8080/internal}
-      MAL_ADMIN_WALLET_TIMEOUT: ${MAL_ADMIN_WALLET_TIMEOUT:-5s}
+      # — the URL/timeout are the #61 pair declared above (one source;
+      # a duplicate mapping key makes compose refuse the whole file).
 
   # The admin app (spec #25, issue #56): Nuxt 3 SSR behind Caddy on
   # the admin domain; /api/* on that vhost proxies to admin-api. The

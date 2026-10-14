@@ -60,8 +60,6 @@ func newOrdersStack(t *testing.T) *ordersStack {
 	t.Helper()
 	ctx := context.Background()
 
-	// Unique throwaway DB per binary run, minted by the shared harness
-	// helper: sibling tickets' IT suites share the dev Postgres (#35).
 	dbName := mintITDB(t, "x")
 
 	exURL := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=exchange",

@@ -25,17 +25,17 @@ import (
 
 // ---- the wallet stub: one handler recording every proxied call ----
 
-type stubCall struct {
+type opsStubCall struct {
 	Method, Path, Query, Actor, Body string
 }
 
-type walletStub struct {
+type opsWalletStub struct {
 	mu    sync.Mutex
-	calls []stubCall
+	calls []opsStubCall
 	srv   *httptest.Server
 }
 
-func (ws *walletStub) saw(t *testing.T, method, path string) stubCall {
+func (ws *opsWalletStub) saw(t *testing.T, method, path string) opsStubCall {
 	t.Helper()
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -45,10 +45,10 @@ func (ws *walletStub) saw(t *testing.T, method, path string) stubCall {
 		}
 	}
 	t.Fatalf("wallet stub never saw %s %s; calls: %v", method, path, ws.calls)
-	return stubCall{}
+	return opsStubCall{}
 }
 
-func (ws *walletStub) callsTo(path string) int {
+func (ws *opsWalletStub) callsTo(path string) int {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
 	n := 0
@@ -60,14 +60,14 @@ func (ws *walletStub) callsTo(path string) int {
 	return n
 }
 
-func newWalletStub(t *testing.T) *walletStub {
+func newWalletStub(t *testing.T) *opsWalletStub {
 	t.Helper()
-	ws := &walletStub{}
+	ws := &opsWalletStub{}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/internal/", func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 		ws.mu.Lock()
-		ws.calls = append(ws.calls, stubCall{
+		ws.calls = append(ws.calls, opsStubCall{
 			Method: r.Method, Path: r.URL.Path, Query: r.URL.RawQuery,
 			Actor: r.Header.Get("X-Mal-Actor"), Body: string(raw),
 		})
@@ -119,7 +119,7 @@ func newWalletStub(t *testing.T) *walletStub {
 
 type opsStack struct {
 	st   *itStack
-	ws   *walletStub
+	ws   *opsWalletStub
 	ops  *httptest.Server
 	root provisioned
 }

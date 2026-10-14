@@ -181,7 +181,7 @@ func ensureTopicsRetry(ctx context.Context, producer *kgo.Client, service string
 		if time.Now().After(deadline) || ctx.Err() != nil {
 			return fmt.Errorf("kafka unreachable after retry window: %w", err)
 		}
-		log.Warn("waiting for broker", "err", err)
+		log.Warn("waiting for broker", "service", service, "err", err)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

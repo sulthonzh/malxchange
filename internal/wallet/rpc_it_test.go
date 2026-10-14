@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -87,4 +88,73 @@ func TestInternalRPCServesAtSingleInternalPath(t *testing.T) {
 		return
 	}
 	t.Fatal("no USDT account in the listing")
+}
+
+// The hot-transfer retry (ticket #60): wallet's RetryHotTransfer
+// existed unmounted — this pins the route POST /internal/hot-transfers/
+// {id}/retry re-arming a failed hot→cold transfer (state failed →
+// pending, error detail cleared) and refusing anything not failed.
+func TestHotTransferRetryRouteReArmsFailed(t *testing.T) {
+	s := newStack(t)
+
+	internal := http.NewServeMux()
+	RegisterRPC(internal, &RPC{DB: s.pool, Log: s.log})
+	root := http.NewServeMux()
+	root.Handle("/internal/", http.StripPrefix("/internal", internal))
+	srv := httptest.NewServer(root)
+	t.Cleanup(srv.Close)
+
+	ctx := context.Background()
+	if _, err := s.pool.Exec(ctx,
+		`UPDATE coins SET cold_address = 'cold-btc-custody' WHERE name = 'BTC'`); err != nil {
+		t.Fatal(err)
+	}
+	coin, err := GetCoin(ctx, s.pool, "BTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := CreateHotTransfer(ctx, s.pool, coin, money.MustParse("2.5"), "ops-it")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkHotTransferFailed(ctx, s.pool, h.ID, HPending, "broadcast: chain down"); err != nil {
+		t.Fatal(err)
+	}
+
+	retry := func(id string) (int, string) {
+		t.Helper()
+		resp, err := http.Post(srv.URL+"/internal/hot-transfers/"+id+"/retry",
+			"application/json", bytes.NewReader(nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(raw)
+	}
+
+	if status, body := retry(h.ID); status != http.StatusOK {
+		t.Fatalf("POST /internal/hot-transfers/%s/retry = %d %s, want 200", h.ID, status, body)
+	}
+	transfers, err := ListHotTransfers(ctx, s.pool, "BTC")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var rearmed map[string]any
+	for _, row := range transfers {
+		if row["id"] == h.ID {
+			rearmed = row
+		}
+	}
+	if rearmed == nil || rearmed["state"] != HPending || rearmed["error"] != "" {
+		t.Fatalf("hot transfer after retry = %v, want state pending with cleared error", rearmed)
+	}
+
+	// A live (pending) transfer is not retryable; neither is an unknown id.
+	if status, _ := retry(h.ID); status != http.StatusBadRequest {
+		t.Fatalf("retry of a pending transfer = %d, want 400", status)
+	}
+	if status, _ := retry("00000000-0000-0000-0000-000000000000"); status != http.StatusBadRequest {
+		t.Fatalf("retry of an unknown transfer = %d, want 400", status)
+	}
 }

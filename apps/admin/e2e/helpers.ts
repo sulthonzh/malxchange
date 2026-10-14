@@ -135,8 +135,8 @@ export async function totpCode(secret: string, at = Date.now()): Promise<string>
  * profile's published ports, because request contexts resolve DNS for
  * real and cannot use the Chromium host mapping pageApi relies on.
  * MEMBER_API already carries the /api prefix — memberCall paths are
- * the FULL public paths (/api/uc/...), exactly as the browser serves
- * them through the edge. */
+ * the SUFFIX after it (/uc/...), because Playwright concatenates the
+ * strings it is given. */
 export const MEMBER_API = process.env.E2E_API_URL ?? 'http://127.0.0.1:18080/api'
 export const MAILSINK = process.env.E2E_MAIL_URL ?? 'http://127.0.0.1:18025'
 
@@ -152,8 +152,15 @@ export async function registerMember(
   email: string,
   password: string,
 ): Promise<MemberTicket> {
-  await request.post(`${MEMBER_API}/uc/register/code`, { data: { email } })
-  const code = await mailedCode(email, request)
+  // The register code email is sent AFTER the 200 (delivery happens
+  // post-commit), so the mail search must start after the POST
+  // returns — otherwise the search deadline can expire first.
+  const sentAt = Date.now()
+  const codeRes = await request.post(`${MEMBER_API}/uc/register/code`, { data: { email } })
+  if (!codeRes.ok()) {
+    throw new Error(`member register code ${codeRes.status()}: ${await codeRes.text()}`)
+  }
+  const code = await mailedCode(email, request, sentAt)
   const res = await request.post(`${MEMBER_API}/uc/register`, { data: { email, code, password } })
   if (!res.ok()) {
     throw new Error(`member register ${res.status()}: ${await res.text()}`)
@@ -167,7 +174,9 @@ export async function memberCall(
   token: string,
   path: string,
   body?: unknown,
-  method: 'GET' | 'POST' | 'PUT' = body === undefined ? 'GET' : 'POST',
+  // The member surface is POST-dominant (KYC submit, code requests,
+  // reviews all mutate); reads pass their method explicitly.
+  method: 'GET' | 'POST' | 'PUT' = 'POST',
 ) {
   return request.fetch(`${MEMBER_API}${path}`, {
     method,
@@ -212,7 +221,7 @@ export async function mailedCode(
  * member app does). */
 export async function submitMemberKyc(request: APIRequestContext, token: string): Promise<void> {
   const image = Buffer.from('e2e-document-bytes').toString('base64')
-  const res = await memberCall(request, token, '/api/uc/kyc', {
+  const res = await memberCall(request, token, '/uc/kyc', {
     fullName: 'E2e Member',
     documentNumber: `E2E-${Date.now()}`,
     frontImage: image,

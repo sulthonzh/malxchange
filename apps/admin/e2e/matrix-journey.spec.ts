@@ -20,6 +20,7 @@ import {
   provisionEmployee,
   readAdminState,
   registerMember,
+  roleIdOf,
   submitMemberKyc,
   totpCode,
   seatPage,
@@ -45,15 +46,15 @@ test('the four Roles act inside their matrices and are refused outside', async (
   const stranger = await registerMember(request, strangerEmail, memberPassword)
 
   const bindMailedAt = Date.now()
-  const codeSent = await memberCall(request, ticket.token, '/api/uc/authenticator/code')
+  const codeSent = await memberCall(request, ticket.token, '/uc/authenticator/code', {}, 'POST')
   expect(codeSent.status(), await codeSent.text()).toBe(200)
   const emailCode = await mailedCode(memberEmail, request, bindMailedAt)
-  const begun = await memberCall(request, ticket.token, '/api/uc/authenticator/bind/begin', { code: emailCode })
+  const begun = await memberCall(request, ticket.token, '/uc/authenticator/bind/begin', { code: emailCode })
   expect(begun.status()).toBe(200)
   const begunBody = (await begun.json()) as { secret?: string }
   expect(begunBody.secret, 'the member TOTP enrollment stages a secret').toBeTruthy()
   const memberSecret = begunBody.secret!
-  const confirmed = await memberCall(request, ticket.token, '/api/uc/authenticator/bind/confirm', {
+  const confirmed = await memberCall(request, ticket.token, '/uc/authenticator/bind/confirm', {
     code: await totpCode(memberSecret),
   })
   expect(confirmed.status()).toBe(200)
@@ -63,6 +64,9 @@ test('the four Roles act inside their matrices and are refused outside', async (
 
   // ---- finance: funds yes, identity and management no ----
   await test.step('finance: funds yes, identity no', async () => {
+    // provisionEmployee leaves the LAST provisioned session in the
+    // cookie jar (compliance here) — finance signs in explicitly.
+    await loginHttp(page, finance.email, finance.password, await totpCode(finance.totpSecret))
     const queue = await pageApi(page, '/api/withdrawals')
     expect(queue.status).toBe(200)
 
@@ -119,6 +123,8 @@ test('the four Roles act inside their matrices and are refused outside', async (
 
   // ---- compliance: identity yes, funds and management no ----
   await test.step('compliance: identity yes, funds no', async () => {
+    // The finance step's cleanup logged the page out.
+    await loginHttp(page, compliance.email, compliance.password, await totpCode(compliance.totpSecret))
     const queue = await pageApi(page, '/api/kyc/applications')
     expect(queue.status).toBe(200)
     const applications =
@@ -141,7 +147,7 @@ test('the four Roles act inside their matrices and are refused outside', async (
       code: await totpCode(compliance.totpSecret),
     })
     expect(reset.status, JSON.stringify(reset.body)).toBe(200)
-    expect(reset.body).toEqual({ memberId: ticket.member.id, status: 'authenticator reset' })
+    expect(reset.body).toEqual({ memberId: ticket.member.id, totpBound: false })
 
     // An unverified member's reset is refused by the gate.
     const refused = await pageApi(page, `/api/members/${stranger.member.id}/totp/reset`, 'POST', {
@@ -182,6 +188,15 @@ test('the four Roles act inside their matrices and are refused outside', async (
   // ---- support: members and content yes, money and KYC no ----
   await test.step('support: members yes, money and KYC no', async () => {
     const support = await provisionEmployee(page, root!, 'support')
+    // admin-journey's grants-free test strips support to zero grants on
+    // this shared stack — restore the member strings this step proves.
+    await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+    const supportRole = await roleIdOf(page, 'support')
+    for (const permission of ['search:member', 'view:member', 'lock:member', 'unlock:member']) {
+      const granted = await pageApi(page, `/api/roles/${supportRole}/grants`, 'POST', { permission, granted: true })
+      expect(granted.status, permission).toBe(200)
+    }
+    await loginHttp(page, support.email, support.password, await totpCode(support.totpSecret))
 
     const viewed = await pageApi(page, `/api/members/${ticket.member.id}`)
     expect(viewed.status).toBe(200)

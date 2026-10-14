@@ -102,9 +102,9 @@ test('super-admin: forced first-login rotation yields the permission-derived she
       await loginThroughUi(page, email, password)
     } else {
       // First run ever: the installer's one-time credential.
-      email = process.env.E2E_BOOTSTRAP_EMAIL ?? ''
+      email = process.env.E2E_BOOTSTRAP_EMAIL ?? 'admin@exchange.example.com'
       password = bootstrapPassword()
-      expect(email, 'no state and no E2E_BOOTSTRAP_* — run `make admin-e2e`').not.toBe('')
+      expect(password, 'no state and no E2E_BOOTSTRAP_* — run `make admin-e2e`').not.toBe('')
       await loginThroughUi(page, email, password)
       await expect(page).toHaveURL('/setup/password')
       const rotated = `E2e-rotated-${suffix()}`

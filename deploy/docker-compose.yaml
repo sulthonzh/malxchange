@@ -25,6 +25,11 @@ x-service: &service
     timeout: 5s
     retries: 12
     start_period: 15s
+    # The e2e profiles rebuild every image from the working tree
+    # (`up --build`), so containers must run what compose builds —
+    # never a stale pull. Without this, `up` prefers a cached image
+    # whose tag matches and silently skips the build.
+  pull_policy: build
 
 x-service-env: &service-env
   MAL_PG_HOST: postgres

@@ -52,7 +52,7 @@ type itStack struct {
 	t    *testing.T
 }
 
-func newStack(t *testing.T) *itStack {
+func newStack(t *testing.T, tweaks ...func(*AdminEnv)) *itStack {
 	t.Helper()
 	ctx := context.Background()
 
@@ -112,6 +112,9 @@ func newStack(t *testing.T) *itStack {
 		SessionIdle:      30 * time.Minute,
 		LockoutThreshold: LockoutThreshold,
 		LockoutWindow:    1500 * time.Millisecond,
+	}
+	for _, tweak := range tweaks {
+		tweak(env)
 	}
 	s := &itStack{pool: pool, env: env, t: t}
 

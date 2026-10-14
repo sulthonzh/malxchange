@@ -26,6 +26,9 @@ const (
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
 	PermViewPermission        = "view:permission"         // GET    /api/permissions (the read-only catalog)
 	PermViewAuditLog          = "view:audit-log"          // GET    /api/audit-log
+	PermViewChannel           = "view:channel"            // GET    /api/channels
+	PermActivateChannel       = "activate:channel"        // POST   /api/channels/{name}/activate (Step-up)
+	PermDeactivateChannel     = "deactivate:channel"      // POST   /api/channels/{name}/deactivate
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -63,6 +66,13 @@ var Endpoints = []Endpoint{
 	// super-admin/finance/compliance. A GET — searching writes nothing,
 	// so the audit middleware does not apply.
 	{Method: http.MethodGet, Path: "/api/audit-log", Perm: PermViewAuditLog, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance}, Handler: (*Server).handleSearchAuditLog},
+	// Code channels (#62, ADR-0006): state and credential validation
+	// live in api; this surface is the gated front. Super-admin's alone
+	// in the ADR-0012 matrix. Activation carries the credential save,
+	// so it demands Step-up inside the handler.
+	{Method: http.MethodGet, Path: "/api/channels", Perm: PermViewChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListChannels},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/activate", Perm: PermActivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleActivateChannel},
+	{Method: http.MethodPost, Path: "/api/channels/{name}/deactivate", Perm: PermDeactivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeactivateChannel},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

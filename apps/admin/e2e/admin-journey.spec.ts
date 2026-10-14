@@ -17,7 +17,7 @@
 import { expect, test } from '@playwright/test'
 import type { Page } from '@playwright/test'
 
-import { pageApi, readAdminState, totpCode, writeAdminState } from './helpers'
+import { bootstrapPassword, pageApi, readAdminState, totpCode, writeAdminState } from './helpers'
 
 function suffix(): string {
   return Math.random().toString(16).slice(2, 10)
@@ -103,7 +103,7 @@ test('super-admin: forced first-login rotation yields the permission-derived she
     } else {
       // First run ever: the installer's one-time credential.
       email = process.env.E2E_BOOTSTRAP_EMAIL ?? ''
-      password = process.env.E2E_BOOTSTRAP_PASSWORD ?? ''
+      password = bootstrapPassword()
       expect(email, 'no state and no E2E_BOOTSTRAP_* — run `make admin-e2e`').not.toBe('')
       await loginThroughUi(page, email, password)
       await expect(page).toHaveURL('/setup/password')

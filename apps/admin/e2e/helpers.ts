@@ -31,6 +31,19 @@ export function readAdminState(): AdminState | null {
 export function writeAdminState(state: AdminState): void {
   writeFileSync(STATE_FILE, JSON.stringify(state, null, 2) + '\n')
 }
+/** The one-time password `make admin-e2e` mints and persists (gitignored):
+ * env first, then the file, so reruns and direct `npx playwright test`
+ * invocations both work after a fresh bootstrap. */
+export function bootstrapPassword(): string {
+  if (process.env.E2E_BOOTSTRAP_PASSWORD) {
+    return process.env.E2E_BOOTSTRAP_PASSWORD
+  }
+  try {
+    return readFileSync(fileURLToPath(new URL('./.bootstrap-password', import.meta.url)), 'utf8').trim()
+  } catch {
+    return ''
+  }
+}
 
 export interface ApiAnswer {
   status: number

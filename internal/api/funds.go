@@ -26,6 +26,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/config"
 	"github.com/syaikhipin/malxchange/internal/money"
 )
@@ -254,7 +255,7 @@ type memberGate interface {
 
 // sessionAuth is the member-only wrapper members.go owns; the funds
 // routes ride the same session seam as the identity surface.
-type sessionAuth func(next func(w http.ResponseWriter, r *http.Request, s Session)) http.HandlerFunc
+type sessionAuth func(next func(w http.ResponseWriter, r *http.Request, s auth.Session)) http.HandlerFunc
 
 // fundsAPI carries the collaborators of the funds routes.
 type fundsAPI struct {
@@ -289,7 +290,7 @@ func (f *fundsAPI) Register(mux *http.ServeMux) {
 // handleAccounts answers the member's Ledger balances per Coin: the
 // wallet's array verbatim (every configured Coin, zeros included,
 // decimal strings at the Coin's scale).
-func (f *fundsAPI) handleAccounts(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleAccounts(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	accts, err := f.wallet.accounts(r.Context(), s.MemberID)
 	if err != nil {
 		writeWalletErr(w, f.log, err)
@@ -303,7 +304,7 @@ func (f *fundsAPI) handleAccounts(w http.ResponseWriter, r *http.Request, s Sess
 
 // handleDepositAddress allocates (or returns) the member's one deposit
 // address for a Coin.
-func (f *fundsAPI) handleDepositAddress(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleDepositAddress(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Coin string `json:"coin"`
 	}
@@ -324,7 +325,7 @@ func (f *fundsAPI) handleDepositAddress(w http.ResponseWriter, r *http.Request, 
 
 // handleDeposits answers the member's deposits with state and the live
 // confirmation count (the wallet's array verbatim, [] never null).
-func (f *fundsAPI) handleDeposits(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleDeposits(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	list, err := f.wallet.deposits(r.Context(), s.MemberID)
 	if err != nil {
 		writeWalletErr(w, f.log, err)
@@ -357,7 +358,7 @@ const pgTimestampLayout = "2006-01-02 15:04:05.999999999-07"
 // handleRecords answers the member's Journal (GLOSSARY: Journal, not
 // statement) — every Ledger movement with its reason, optional Coin
 // filter.
-func (f *fundsAPI) handleRecords(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleRecords(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	lines, err := f.wallet.journal(r.Context(), s.MemberID, r.URL.Query().Get("coin"))
 	if err != nil {
 		writeWalletErr(w, f.log, err)
@@ -483,7 +484,7 @@ type feePreview struct {
 
 // handleWithdrawFee shows the fee and net for a prospective withdrawal
 // before the member submits it. The amount rides back verbatim.
-func (f *fundsAPI) handleWithdrawFee(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleWithdrawFee(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	preview, err := f.previewWithdrawal(r.Context(), r.URL.Query().Get("coin"), r.URL.Query().Get("amount"))
 	if err != nil {
 		writePublicErr(w, f.log, err)
@@ -531,7 +532,7 @@ func (f *fundsAPI) loadCoinAndAmount(ctx context.Context, coinName, rawAmount st
 // Authenticator bound, and a live code presented — only then is the
 // amount validated against the Coin's scale and proxied to the wallet,
 // which debits and answers with the fee it deducted.
-func (f *fundsAPI) handleWithdraw(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleWithdraw(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Coin    string `json:"coin"`
 		Address string `json:"address"`
@@ -603,7 +604,7 @@ type withdrawAddress struct {
 	CreatedAt string `json:"createdAt"`
 }
 
-func (f *fundsAPI) handleListWithdrawAddresses(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleListWithdrawAddresses(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	rows, err := f.pool.Query(r.Context(), `
 		SELECT id, coin, address, label, created_at
 		FROM withdraw_addresses WHERE member_id = $1
@@ -631,7 +632,7 @@ func (f *fundsAPI) handleListWithdrawAddresses(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (f *fundsAPI) handleAddWithdrawAddress(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleAddWithdrawAddress(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Coin    string `json:"coin"`
 		Address string `json:"address"`
@@ -681,7 +682,7 @@ func (f *fundsAPI) handleAddWithdrawAddress(w http.ResponseWriter, r *http.Reque
 	})
 }
 
-func (f *fundsAPI) handleUpdateWithdrawAddress(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleUpdateWithdrawAddress(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req struct {
 		Label string `json:"label"`
 	}
@@ -708,7 +709,7 @@ func (f *fundsAPI) handleUpdateWithdrawAddress(w http.ResponseWriter, r *http.Re
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 
-func (f *fundsAPI) handleDeleteWithdrawAddress(w http.ResponseWriter, r *http.Request, s Session) {
+func (f *fundsAPI) handleDeleteWithdrawAddress(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	tag, err := f.pool.Exec(r.Context(), `
 		DELETE FROM withdraw_addresses WHERE id = $1 AND member_id = $2`,
 		r.PathValue("id"), s.MemberID)

@@ -1,9 +1,17 @@
-package api
+// Package auth carries the login primitives shared by the member api
+// and the admin-api Employee surface (issue #52): argon2id password
+// hashing with the login password policy, RFC 6238 Authenticator codes,
+// opaque-token minting and digesting, and Postgres-backed sessions with
+// parameterized expiry. Session storage (ADR-0006) lives in the
+// service's own schema; this package only speaks SQL against the
+// `sessions` / `login_failures` shapes both services share.
+package auth
 
 import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -21,11 +29,11 @@ const (
 	argonSaltLen        = 16
 )
 
-// hashPassword derives the argon2id PHC string for a login password.
-func hashPassword(password string) (string, error) {
+// HashPassword derives the argon2id PHC string for a login password.
+func HashPassword(password string) (string, error) {
 	salt := make([]byte, argonSaltLen)
 	if _, err := rand.Read(salt); err != nil {
-		return "", fmt.Errorf("api: salt: %w", err)
+		return "", fmt.Errorf("auth: salt: %w", err)
 	}
 	key := argon2.IDKey([]byte(password), salt, argonTime, argonMemory, argonThreads, argonKeyLen)
 	return fmt.Sprintf("$argon2id$v=%d$m=%d,t=%d,p=%d$%s$%s",
@@ -34,16 +42,29 @@ func hashPassword(password string) (string, error) {
 		base64.RawStdEncoding.EncodeToString(key)), nil
 }
 
-// verifyPassword reports whether the password matches the stored PHC
+// VerifyPassword reports whether the password matches the stored PHC
 // string. A malformed stored hash never verifies and never errors — a
 // corrupt row must not become a login bypass or a 500.
-func verifyPassword(phc, password string) bool {
+func VerifyPassword(phc, password string) bool {
 	p, err := parsePHC(phc)
 	if err != nil {
 		return false
 	}
 	key := argon2.IDKey([]byte(password), p.salt, p.time, p.memory, p.threads, p.keyLen)
 	return subtle.ConstantTimeCompare(key, p.key) == 1
+}
+
+// CheckPasswordPolicy enforces the login password bounds shared by
+// registration, password change, and forgot-password reset. The
+// messages are member-facing (ADR-0013: English-only).
+func CheckPasswordPolicy(pw string) error {
+	if len(pw) < 8 {
+		return errors.New("Choose a password of at least 8 characters.")
+	}
+	if len(pw) > 512 {
+		return errors.New("Choose a password of at most 512 characters.")
+	}
+	return nil
 }
 
 type phcParams struct {
@@ -57,22 +78,22 @@ func parsePHC(phc string) (phcParams, error) {
 	parts := strings.Split(phc, "$")
 	// "", "argon2id", "v=19", "m=...,t=...,p=...", salt, key
 	if len(parts) != 6 || parts[1] != "argon2id" {
-		return phcParams{}, fmt.Errorf("api: not an argon2id PHC string")
+		return phcParams{}, fmt.Errorf("auth: not an argon2id PHC string")
 	}
 	var version int
 	if _, err := fmt.Sscanf(parts[2], "v=%d", &version); err != nil || version != argon2.Version {
-		return phcParams{}, fmt.Errorf("api: unsupported argon2 version")
+		return phcParams{}, fmt.Errorf("auth: unsupported argon2 version")
 	}
 	var p phcParams
 	if _, err := fmt.Sscanf(parts[3], "m=%d,t=%d,p=%d", &p.memory, &p.time, &p.threads); err != nil {
-		return phcParams{}, fmt.Errorf("api: bad argon2 parameters")
+		return phcParams{}, fmt.Errorf("auth: bad argon2 parameters")
 	}
 	var err error
 	if p.salt, err = base64.RawStdEncoding.DecodeString(parts[4]); err != nil {
-		return phcParams{}, fmt.Errorf("api: bad salt")
+		return phcParams{}, fmt.Errorf("auth: bad salt")
 	}
 	if p.key, err = base64.RawStdEncoding.DecodeString(parts[5]); err != nil {
-		return phcParams{}, fmt.Errorf("api: bad key")
+		return phcParams{}, fmt.Errorf("auth: bad key")
 	}
 	p.keyLen = uint32(len(p.key))
 	return p, nil

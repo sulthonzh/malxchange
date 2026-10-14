@@ -40,6 +40,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/shopspring/decimal"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/config"
 	"github.com/syaikhipin/malxchange/internal/events"
 	"github.com/syaikhipin/malxchange/internal/money"
@@ -111,7 +112,7 @@ type placeOrderRequest struct {
 	Amount string `json:"amount"` // decimal string; base amount, or the quote budget for a market buy
 }
 
-func (a *orderAPI) handlePlace(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *orderAPI) handlePlace(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req placeOrderRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -313,7 +314,7 @@ func (a *orderAPI) freezeHold(ctx context.Context, orderID, member, market, side
 
 // ---- cancel ----
 
-func (a *orderAPI) handleCancel(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *orderAPI) handleCancel(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	id := r.PathValue("id")
 	var market string
 	err := a.pool.QueryRow(r.Context(),
@@ -401,11 +402,11 @@ func (a *orderAPI) proxyOrders(w http.ResponseWriter, r *http.Request, path, mem
 	_, _ = w.Write(body)
 }
 
-func (a *orderAPI) handleCurrent(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *orderAPI) handleCurrent(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	a.proxyOrders(w, r, "/orders/current", s.MemberID, nil)
 }
 
-func (a *orderAPI) handleHistory(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *orderAPI) handleHistory(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	q := r.URL.Query()
 	// Exchange's own bounds, checked here so a member's bad query gets
 	// api's named message instead of the internal error envelope.

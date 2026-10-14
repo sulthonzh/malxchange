@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/config"
 )
 
@@ -35,6 +36,14 @@ var (
 	envOnce sync.Once
 	envVal  *APIEnv
 )
+
+// slidingSessions is the member session model (ADR-0006): a pure
+// sliding window — every authenticated use re-extends expiry from now,
+// no absolute cap. Employee sessions (ADR-0012) shape
+// auth.SessionPolicy differently; api always slides.
+func (e *APIEnv) slidingSessions() auth.SessionPolicy {
+	return auth.SessionPolicy{Idle: e.SessionTTL}
+}
 
 // LoadAPIEnv reads the MAL_API_* environment once per process.
 func LoadAPIEnv() *APIEnv {

@@ -14,14 +14,11 @@ package exchange
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
@@ -53,36 +50,9 @@ func newRunStack(t *testing.T) *runStack {
 	t.Helper()
 	ctx := context.Background()
 
-	// Throwaway DB (review checklist: per-binary minted name), exchange
-	// schema only — this journey rests and cancels, never fills.
-	suffix := make([]byte, 6)
-	if _, err := rand.Read(suffix); err != nil {
-		t.Fatal(err)
-	}
-	dbName := "malxchange_itr_" + hex.EncodeToString(suffix)
-
-	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx,
-		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	admin.Close()
-	t.Cleanup(func() {
-		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
-	})
+	// Throwaway DB via the shared mintITDB helper; exchange schema only —
+	// this journey rests and cancels, never fills.
+	dbName := mintITDB(t, "r")
 
 	exURL := ordersPGURL(t, dbName, "exchange")
 	pool, err := pgxpool.New(ctx, exURL)

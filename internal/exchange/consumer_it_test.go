@@ -44,6 +44,54 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// mintITDB mints a uniquely named throwaway database on the dev Postgres,
+// creates it, and registers its FORCE-drop in t.Cleanup. The name is
+// random per binary: sibling tickets' IT suites run against the same dev
+// Postgres, and a fixed name would let one worktree's DROP/recreate pull
+// the floor out from under another's mid-test run (#35). variant keeps
+// the per-suite prefix (ite/itx/itr/…) so it-db-leftovers litter from a
+// killed run stays attributable. Callers keep their own pool/migration
+// setup — search_path and schemas differ per stack.
+func mintITDB(t *testing.T, variant string) string {
+	t.Helper()
+	ctx := context.Background()
+
+	suffix := make([]byte, 6)
+	if _, err := rand.Read(suffix); err != nil {
+		t.Fatal(err)
+	}
+	dbName := "malxchange_it" + variant + "_" + hex.EncodeToString(suffix)
+
+	adminURL := fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
+		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost)
+	drop := func() error {
+		admin, err := pgxpool.New(ctx, adminURL)
+		if err != nil {
+			return err
+		}
+		defer admin.Close()
+		_, err = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
+		return err
+	}
+	// Defensive pre-create drop: cleanups fire on normal exit only, so a
+	// killed run leaks the database and CREATE would fail on the leftover.
+	if err := drop(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = drop() })
+
+	admin, err := pgxpool.New(ctx, adminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
+		t.Fatal(err)
+	}
+	admin.Close()
+
+	return dbName
+}
+
 // itStack: throwaway schema + in-process broker + engine wired for manual
 // batch driving (applyFetches is called directly, so "crash points" are
 // expressible).
@@ -61,38 +109,7 @@ func newStack(t *testing.T) *itStack {
 	t.Helper()
 	ctx := context.Background()
 
-	// Unique throwaway DB per test binary: sibling tickets' IT suites run
-	// against the same dev Postgres, and a fixed name would let one
-	// worktree's DROP/recreate pull the floor out from under another's
-	// mid-test run.
-	suffix := make([]byte, 6)
-	if _, err := rand.Read(suffix); err != nil {
-		t.Fatal(err)
-	}
-	dbName := "malxchange_ite_" + hex.EncodeToString(suffix)
-
-	admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx,
-		fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := admin.Exec(ctx, fmt.Sprintf(`CREATE DATABASE %s`, dbName)); err != nil {
-		t.Fatal(err)
-	}
-	admin.Close()
-	t.Cleanup(func() {
-		admin, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/postgres",
-			os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost))
-		if err != nil {
-			return
-		}
-		defer admin.Close()
-		_, _ = admin.Exec(ctx, fmt.Sprintf(`DROP DATABASE IF EXISTS %s WITH (FORCE)`, dbName))
-	})
+	dbName := mintITDB(t, "e")
 
 	pool, err := pgxpool.New(ctx, fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable&search_path=exchange",
 		os.Getenv("MAL_TEST_PG_SUPERUSER"), itPGPW, itPGHost, dbName))

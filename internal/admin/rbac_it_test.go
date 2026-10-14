@@ -81,22 +81,22 @@ func (s *itStack) setGrant(t *testing.T, cookie *http.Cookie, roleID, perm strin
 	}
 }
 
-// staff creates a fully provisioned Employee in a seeded Role through
+// employee creates a fully provisioned Employee in a seeded Role through
 // the management surface (Step-up create + forced setup) — the exact
 // journey the admin app drives.
-func (s *itStack) staff(t *testing.T, root provisioned, rootCookie *http.Cookie, email, roleName string) provisioned {
+func (s *itStack) employee(t *testing.T, root provisioned, rootCookie *http.Cookie, email, roleName string) provisioned {
 	t.Helper()
 	roleID := s.roleIDOf(t, rootCookie, roleName)
 	code, err := totpNow(root.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body := fmt.Sprintf(`{"email":%q,"password":"staff-one-time-1","role_id":%q,"code":%q}`, email, roleID, code)
+	body := fmt.Sprintf(`{"email":%q,"password":"employee-one-time-1","role_id":%q,"code":%q}`, email, roleID, code)
 	status, _, raw := s.post(t, "/api/employees", body, rootCookie)
 	if status != http.StatusOK {
-		t.Fatalf("create staff %s: %d %s", email, status, raw)
+		t.Fatalf("create employee %s: %d %s", email, status, raw)
 	}
-	return s.finishSetup(t, email, "staff-one-time-1")
+	return s.finishSetup(t, email, "employee-one-time-1")
 }
 
 func TestCatalogSeededFromRegistry(t *testing.T) {
@@ -202,7 +202,7 @@ func TestRoleMatrixRefusesNonMatrixRoles(t *testing.T) {
 
 	actors := map[string]*http.Cookie{RoleSuperAdmin: rootCookie}
 	for _, name := range []string{RoleFinance, RoleCompliance, RoleSupport} {
-		p := s.staff(t, root, rootCookie, "matrix-"+name+"@it.test", name)
+		p := s.employee(t, root, rootCookie, "matrix-"+name+"@it.test", name)
 		actors[name] = p.freshCookie(t, s)
 	}
 
@@ -314,7 +314,7 @@ func TestEmployeeGuardsRefused(t *testing.T) {
 	// what the editor is for.
 	s.setGrant(t, cookie, financeID, PermDisableEmployee, true)
 	s.setGrant(t, cookie, financeID, PermAssignEmployeeRole, true)
-	fin := s.staff(t, root, cookie, "guard-finance@it.test", RoleFinance)
+	fin := s.employee(t, root, cookie, "guard-finance@it.test", RoleFinance)
 	finCookie := fin.freshCookie(t, s)
 
 	status, _, raw = s.post(t, "/api/employees/"+root.EmpID+"/disable", "{}", finCookie)
@@ -341,9 +341,9 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	cookie := root.freshCookie(t, s)
 	financeID := s.roleIDOf(t, cookie, RoleFinance)
 	supportID := s.roleIDOf(t, cookie, RoleSupport)
-	const email = "life-staff@it.test"
+	const email = "life-employee@it.test"
 	createBody := func(code string) string {
-		return fmt.Sprintf(`{"email":%q,"password":"staff-one-time-1","role_id":%q,"code":%q}`,
+		return fmt.Sprintf(`{"email":%q,"password":"employee-one-time-1","role_id":%q,"code":%q}`,
 			email, financeID, code)
 	}
 
@@ -387,27 +387,27 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 		t.Fatalf("duplicate email: %d %s", status, raw)
 	}
 
-	staff := s.finishSetup(t, email, "staff-one-time-1")
+	employee := s.finishSetup(t, email, "employee-one-time-1")
 
 	// Disable: the target's sessions are revoked with the flag (one
 	// transaction), login is refused as disabled.
-	staffCookie := staff.freshCookie(t, s)
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/disable", "{}", cookie); status != http.StatusOK {
+	employeeCookie := employee.freshCookie(t, s)
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/disable", "{}", cookie); status != http.StatusOK {
 		t.Fatalf("disable: %d %s", status, raw)
 	}
-	if status, _, _ := s.do(t, "GET", "/api/me", "", staffCookie); status != http.StatusUnauthorized {
+	if status, _, _ := s.do(t, "GET", "/api/me", "", employeeCookie); status != http.StatusUnauthorized {
 		t.Fatalf("session survived disable: %d", status)
 	}
-	if status, _, _ := staff.login(t, s, ""); status != http.StatusForbidden {
+	if status, _, _ := employee.login(t, s, ""); status != http.StatusForbidden {
 		t.Fatalf("disabled login: %d", status)
 	}
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/enable", "{}", cookie); status != http.StatusOK {
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/enable", "{}", cookie); status != http.StatusOK {
 		t.Fatalf("enable: %d %s", status, raw)
 	}
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/reset-password", "{}", cookie); status != http.StatusUnauthorized {
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/reset-password", "{}", cookie); status != http.StatusUnauthorized {
 		t.Fatalf("reset-password without code: %d %s", status, raw)
 	}
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/reset-password",
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/reset-password",
 		fmt.Sprintf(`{"code":%q}`, wrongCodeOf(t, root.TOTPSecr)), cookie); status != http.StatusUnauthorized {
 		t.Fatalf("reset-password with wrong code: %d %s", status, raw)
 	}
@@ -415,7 +415,7 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	status, _, raw = s.post(t, "/api/employees/"+staff.EmpID+"/reset-password",
+	status, _, raw = s.post(t, "/api/employees/"+employee.EmpID+"/reset-password",
 		fmt.Sprintf(`{"code":%q}`, code), cookie)
 	if status != http.StatusOK {
 		t.Fatalf("reset-password with fresh code: %d %s", status, raw)
@@ -429,11 +429,11 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 
 	// The old password is dead (valid code, wrong password → 401); the
 	// one-time credential signs in (restricted: rotation forced again).
-	if status, _, _ := staff.login(t, s, mustTOTP(t, staff.TOTPSecr)); status != http.StatusUnauthorized {
+	if status, _, _ := employee.login(t, s, mustTOTP(t, employee.TOTPSecr)); status != http.StatusUnauthorized {
 		t.Fatalf("old password after reset: %d", status)
 	}
-	staff.Password = reset.OneTimePassword
-	if status, _, _ := staff.login(t, s, mustTOTP(t, staff.TOTPSecr)); status != http.StatusOK {
+	employee.Password = reset.OneTimePassword
+	if status, _, _ := employee.login(t, s, mustTOTP(t, employee.TOTPSecr)); status != http.StatusOK {
 		t.Fatalf("one-time password after reset: %d", status)
 	}
 
@@ -442,13 +442,13 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/reset-totp",
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/reset-totp",
 		fmt.Sprintf(`{"code":%q}`, code), cookie); status != http.StatusOK {
 		t.Fatalf("reset-totp: %d %s", status, raw)
 	}
 
 	// Role assignment lands and is visible.
-	if status, _, raw := s.post(t, "/api/employees/"+staff.EmpID+"/role",
+	if status, _, raw := s.post(t, "/api/employees/"+employee.EmpID+"/role",
 		fmt.Sprintf(`{"role_id":%q}`, supportID), cookie); status != http.StatusOK {
 		t.Fatalf("assign role: %d %s", status, raw)
 	}
@@ -467,7 +467,7 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 		}
 	}
 	if entry == nil || entry.Role != RoleSupport || entry.TOTPBound || !entry.MustRotate {
-		t.Fatalf("staff list entry = %+v", entry)
+		t.Fatalf("employee list entry = %+v", entry)
 	}
 
 	// Every lifecycle mutation produced its middleware-written audit
@@ -478,12 +478,12 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	} {
 		found := false
 		for _, row := range s.auditRows(t, action) {
-			if row.Target == staff.EmpID {
+			if row.Target == employee.EmpID {
 				found = true
 			}
 		}
 		if !found {
-			t.Fatalf("no %s audit row for %s", action, staff.EmpID)
+			t.Fatalf("no %s audit row for %s", action, employee.EmpID)
 		}
 	}
 }

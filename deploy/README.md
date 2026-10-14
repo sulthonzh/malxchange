@@ -123,6 +123,17 @@ The Redpanda Console is bound to `127.0.0.1:8090` only — reach it over
 SSH, never through Caddy. btcd/ltcd (chains profile, default on) need
 ~100GB+ of disk; `--without-chains` installs without them.
 
+### Locked-out super-admin (break-glass)
+
+When the *sole* super-admin cannot sign in — lost password, lost TOTP
+device, disabled account — and no second super-admin exists to fix it
+from the admin surface, the `breakglass` CLI restores access: it runs
+on the host, writes the admin schema directly, touches no HTTP path of
+admin-api, and audits every action as `system:breakglass`. It is the
+exception path only; if another super-admin can sign in, use Employee
+management instead. The full procedure, commands, and preconditions
+live in `install/break-glass.md`.
+
 ## Exchange engine (issue #21)
 
 `cmd/exchange` now runs the real fold: order.command in; trade.fill /

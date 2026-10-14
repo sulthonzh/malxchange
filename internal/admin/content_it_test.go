@@ -22,14 +22,14 @@ import (
 	"github.com/syaikhipin/malxchange/internal/api"
 )
 
-// contentStaffs provisions the root super-admin and a support Employee
+// contentEmployees provisions the root super-admin and a support Employee
 // through the management surface — the exact journey the app drives —
 // and returns their live session cookies.
-func contentStaffs(t *testing.T, s *itStack) (root provisioned, rootCookie, supportCookie *http.Cookie) {
+func contentEmployees(t *testing.T, s *itStack) (root provisioned, rootCookie, supportCookie *http.Cookie) {
 	t.Helper()
 	root = s.fullyProvisioned(t, "root@exchange.example.com")
 	rootCookie = root.freshCookie(t, s)
-	support := s.staff(t, root, rootCookie, "support@exchange.example.com", RoleSupport)
+	support := s.employee(t, root, rootCookie, "support@exchange.example.com", RoleSupport)
 	return root, rootCookie, support.freshCookie(t, s)
 }
 
@@ -162,7 +162,7 @@ func contractSeedOf(t *testing.T, s *itStack, cookie *http.Cookie) contractSeed 
 // named bad request.
 func TestInternalContentContractByteShape(t *testing.T) {
 	s := newStack(t)
-	_, _, cookie := contentStaffs(t, s)
+	_, _, cookie := contentEmployees(t, s)
 	seed := contractSeedOf(t, s, cookie)
 
 	// Announcements page, newest first, drafts never.
@@ -252,7 +252,7 @@ func TestInternalContentContractByteShape(t *testing.T) {
 // the identical bytes to members.
 func TestMemberContentProxyServesAdminContent(t *testing.T) {
 	s := newStack(t)
-	_, _, cookie := contentStaffs(t, s)
+	_, _, cookie := contentEmployees(t, s)
 	seed := contractSeedOf(t, s, cookie)
 
 	mux := http.NewServeMux()
@@ -314,7 +314,7 @@ func TestMemberContentProxyServesAdminContent(t *testing.T) {
 // non-empty-category guard (409).
 func TestContentCRUDJourneysAuditEverything(t *testing.T) {
 	s := newStack(t)
-	_, _, cookie := contentStaffs(t, s)
+	_, _, cookie := contentEmployees(t, s)
 	seed := contractSeedOf(t, s, cookie)
 
 	// --- announcements ---
@@ -491,9 +491,9 @@ func TestContentCRUDJourneysAuditEverything(t *testing.T) {
 // exhaustively).
 func TestContentMatrixHolds(t *testing.T) {
 	s := newStack(t)
-	root, rootCookie, supportCookie := contentStaffs(t, s)
-	finance := s.staff(t, root, rootCookie, "finance@exchange.example.com", RoleFinance)
-	compliance := s.staff(t, root, rootCookie, "compliance@exchange.example.com", RoleCompliance)
+	root, rootCookie, supportCookie := contentEmployees(t, s)
+	finance := s.employee(t, root, rootCookie, "finance@exchange.example.com", RoleFinance)
+	compliance := s.employee(t, root, rootCookie, "compliance@exchange.example.com", RoleCompliance)
 
 	// Support's positive journey.
 	status, _, raw := s.do(t, "GET", "/api/announcements", "", supportCookie)
@@ -503,27 +503,27 @@ func TestContentMatrixHolds(t *testing.T) {
 	createAnnouncement(t, s, supportCookie, "From support", "<p>Hello.</p>", true)
 
 	// Refused roles, on both a read and a write.
-	for _, user := range []struct {
+	for _, employee := range []struct {
 		name   string
 		cookie *http.Cookie
 	}{{"finance", finance.freshCookie(t, s)}, {"compliance", compliance.freshCookie(t, s)}, {"super-admin", rootCookie}} {
-		status, _, raw = s.do(t, "GET", "/api/announcements", "", user.cookie)
+		status, _, raw = s.do(t, "GET", "/api/announcements", "", employee.cookie)
 		if status != http.StatusForbidden || !strings.Contains(raw, "You do not have permission to do that.") {
-			t.Fatalf("%s list: %d %s", user.name, status, raw)
+			t.Fatalf("%s list: %d %s", employee.name, status, raw)
 		}
 		status, _, raw = s.do(t, "POST", "/api/announcements",
-			`{"title":"Nope","content":"<p>x</p>","published":false}`, user.cookie)
+			`{"title":"Nope","content":"<p>x</p>","published":false}`, employee.cookie)
 		if status != http.StatusForbidden {
-			t.Fatalf("%s create: %d %s", user.name, status, raw)
+			t.Fatalf("%s create: %d %s", employee.name, status, raw)
 		}
-		status, _, raw = s.do(t, "GET", "/api/help/categories", "", user.cookie)
+		status, _, raw = s.do(t, "GET", "/api/help/categories", "", employee.cookie)
 		if status != http.StatusForbidden {
-			t.Fatalf("%s categories: %d %s", user.name, status, raw)
+			t.Fatalf("%s categories: %d %s", employee.name, status, raw)
 		}
 		status, _, raw = s.do(t, "POST", "/api/help/articles",
-			`{"category_id":"x","title":"t","content":"<p>c</p>","published":false}`, user.cookie)
+			`{"category_id":"x","title":"t","content":"<p>c</p>","published":false}`, employee.cookie)
 		if status != http.StatusForbidden {
-			t.Fatalf("%s article create: %d %s", user.name, status, raw)
+			t.Fatalf("%s article create: %d %s", employee.name, status, raw)
 		}
 	}
 }

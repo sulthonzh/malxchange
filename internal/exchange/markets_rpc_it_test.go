@@ -121,7 +121,7 @@ func TestMarketConfigEditPersistsAndApplies(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, m := range listed {
-		if m.Symbol != "BTC/USDT" {
+		if m.Market != "BTC/USDT" {
 			continue
 		}
 		if m.MakerFeeRate != "0.002" || m.MinTurnover != "10" || m.Visible {

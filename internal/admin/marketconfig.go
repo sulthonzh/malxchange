@@ -26,37 +26,37 @@ func (s *Server) handleListMarkets(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write(bytes.TrimSpace(raw))
 }
 
-// handleUpdateMarket serves PUT /api/markets/{symbol}: the before
+// handleUpdateMarket serves PUT /api/markets/{market}: the before
 // snapshot comes from the config list (the row's canonical JSON), the
 // edit body is forwarded verbatim, and the exchange's answer — the
 // merged row — is both the response and the audit After.
 func (s *Server) handleUpdateMarket(w http.ResponseWriter, r *http.Request) {
 	entry := auditEntry(r)
-	symbol := r.PathValue("symbol")
+	market := r.PathValue("market")
 	body, ok := readProxyBody(w, r)
 	if !ok {
 		return
 	}
 	actor, _ := employeeFrom(r.Context())
 
-	before, err := s.marketRowSnapshot(r, symbol)
+	before, err := s.marketRowSnapshot(r, market)
 	if err != nil {
 		s.relayUpstreamError(w, err, "The exchange service could not be reached.")
 		return
 	}
 	if before == nil {
-		WriteError(w, http.StatusNotFound, "Unknown Market \""+symbol+"\".")
+		WriteError(w, http.StatusNotFound, "Unknown Market \""+market+"\".")
 		return
 	}
 
-	_, after, err := s.upstreams.exchange.call(r.Context(), http.MethodPut, "/markets/"+symbol, body, actor.Email)
+	_, after, err := s.upstreams.exchange.call(r.Context(), http.MethodPut, "/markets/"+market, body, actor.Email)
 	if err != nil {
 		s.relayUpstreamError(w, err, "The exchange service could not be reached.")
 		return
 	}
 
 	if entry != nil {
-		entry.Target = symbol
+		entry.Target = market
 		entry.Before = before
 		entry.After = after
 	}
@@ -65,8 +65,8 @@ func (s *Server) handleUpdateMarket(w http.ResponseWriter, r *http.Request) {
 }
 
 // marketRowSnapshot extracts one Market's row JSON from the config
-// list — nil when the exchange does not know the symbol.
-func (s *Server) marketRowSnapshot(r *http.Request, symbol string) (json.RawMessage, error) {
+// list — nil when the exchange does not know the Market.
+func (s *Server) marketRowSnapshot(r *http.Request, market string) (json.RawMessage, error) {
 	_, raw, err := s.upstreams.exchange.call(r.Context(), http.MethodGet, "/markets", nil, "")
 	if err != nil {
 		return nil, err
@@ -77,12 +77,12 @@ func (s *Server) marketRowSnapshot(r *http.Request, symbol string) (json.RawMess
 	}
 	for _, row := range listed {
 		var probe struct {
-			Symbol string `json:"symbol"`
+			Market string `json:"market"`
 		}
 		if err := json.Unmarshal(row, &probe); err != nil {
 			continue
 		}
-		if probe.Symbol == symbol {
+		if probe.Market == market {
 			return row, nil
 		}
 	}

@@ -33,7 +33,7 @@ const (
 	PermViewCoin   = "view:coin"   // GET /api/coins
 	PermEditCoin   = "edit:coin"   // PUT /api/coins/{name}
 	PermViewMarket = "view:market" // GET /api/markets
-	PermEditMarket = "edit:market" // PUT /api/markets/{symbol}
+	PermEditMarket = "edit:market" // PUT /api/markets/{market}
 	PermViewEngine = "view:engine" // GET /api/engine
 	// Wallet Ops (ticket #60): the custody + operations surface over
 	// wallet's internal RPCs (ADR-0008). Finance + super-admin per the
@@ -140,9 +140,9 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/coins", Perm: PermViewCoin, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListCoins},
 	{Method: http.MethodPut, Path: "/api/coins/{name}", Perm: PermEditCoin, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleUpdateCoin},
 	{Method: http.MethodGet, Path: "/api/markets", Perm: PermViewMarket, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListMarkets},
-	// Symbols carry a slash ("BTC/USDT"), so the edit route is
-	// multi-segment; PathValue joins it back to the symbol.
-	{Method: http.MethodPut, Path: "/api/markets/{symbol...}", Perm: PermEditMarket, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleUpdateMarket},
+	// Markets are named with a slash ("BTC/USDT"), so the edit route
+	// is multi-segment; PathValue joins it back to the market.
+	{Method: http.MethodPut, Path: "/api/markets/{market...}", Perm: PermEditMarket, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleUpdateMarket},
 	// The engine status page is the one surface every Role sees
 	// (ADR-0012 matrix: read-side incl. engine status for all four).
 	{Method: http.MethodGet, Path: "/api/engine", Perm: PermViewEngine, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance, RoleSupport}, Handler: (*Server).handleEngineStatus},

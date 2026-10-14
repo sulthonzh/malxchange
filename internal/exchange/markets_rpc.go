@@ -47,18 +47,18 @@ func (r *AdminRPC) logger() *slog.Logger {
 
 // RegisterAdminRPC mounts the Market-config routes on the service's
 // internal mux (the boot harness serves it under /internal/ with the
-// prefix stripped). Symbols contain a slash ("BTC/USDT"), so the edit
-// route takes the multi-segment form.
+// prefix stripped). Markets are named with a slash ("BTC/USDT"), so the
+// edit route takes the multi-segment form.
 func RegisterAdminRPC(mux *http.ServeMux, r *AdminRPC) {
 	mux.HandleFunc("GET /markets", r.listMarkets)
-	mux.HandleFunc("PUT /markets/{symbol...}", r.putMarket)
+	mux.HandleFunc("PUT /markets/{market...}", r.putMarket)
 }
 
 // marketView is the full Market row as decimal strings (ADR-0005) —
 // the wire shape of both the list and the PUT answer. Null collars are
 // JSON null (unbounded), not empty strings.
 type marketView struct {
-	Symbol              string  `json:"symbol"`
+	Market              string  `json:"market"`
 	BaseCoin            string  `json:"baseCoin"`
 	QuoteCoin           string  `json:"quoteCoin"`
 	BaseScale           int     `json:"baseScale"`
@@ -90,7 +90,7 @@ func strPtr(s string) *string {
 
 func viewOf(m MarketCfg) marketView {
 	return marketView{
-		Symbol: m.Symbol, BaseCoin: m.BaseCoin, QuoteCoin: m.QuoteCoin,
+		Market: m.Market, BaseCoin: m.BaseCoin, QuoteCoin: m.QuoteCoin,
 		BaseScale: m.BaseScale, QuoteScale: m.QuoteScale,
 		TickSize: m.TickSize, LotSize: m.LotSize,
 		MakerFeeRate: m.MakerFee, TakerFeeRate: m.TakerFee,
@@ -112,7 +112,7 @@ func (r *AdminRPC) listMarkets(w http.ResponseWriter, req *http.Request) {
 	for _, cfg := range cfgs {
 		out = append(out, viewOf(cfg))
 	}
-	slices.SortFunc(out, func(a, b marketView) int { return strings.Compare(a.Symbol, b.Symbol) })
+	slices.SortFunc(out, func(a, b marketView) int { return strings.Compare(a.Market, b.Market) })
 	writeMarketsJSON(w, out)
 }
 
@@ -169,7 +169,7 @@ var (
 )
 
 func (r *AdminRPC) putMarket(w http.ResponseWriter, req *http.Request) {
-	symbol := req.PathValue("symbol")
+	market := req.PathValue("market")
 	var in marketUpdate
 	if err := json.NewDecoder(http.MaxBytesReader(w, req.Body, 1<<16)).Decode(&in); err != nil {
 		writeMarketErr(w, r.Log, http.StatusBadRequest, "The request body is not valid JSON.")
@@ -179,7 +179,7 @@ func (r *AdminRPC) putMarket(w http.ResponseWriter, req *http.Request) {
 
 	var updated marketView
 	err := pgx.BeginFunc(req.Context(), r.DB, func(tx pgx.Tx) error {
-		cfg, err := loadMarketForUpdate(req.Context(), tx, symbol)
+		cfg, err := loadMarketForUpdate(req.Context(), tx, market)
 		if err != nil {
 			return err
 		}
@@ -191,12 +191,12 @@ func (r *AdminRPC) putMarket(w http.ResponseWriter, req *http.Request) {
 		// resting Orders is refused here so the table never diverges
 		// from what the engine would apply.
 		if next.quant() != cfg.quant() {
-			open, err := openOrderCount(req.Context(), tx, symbol)
+			open, err := openOrderCount(req.Context(), tx, market)
 			if err != nil {
 				return err
 			}
 			if open > 0 {
-				return fmt.Errorf("%w: %s has %d open orders", errFrozenMarket, symbol, open)
+				return fmt.Errorf("%w: %s has %d open orders", errFrozenMarket, market, open)
 			}
 		}
 		if err := saveMarket(req.Context(), tx, next); err != nil {
@@ -208,10 +208,10 @@ func (r *AdminRPC) putMarket(w http.ResponseWriter, req *http.Request) {
 	switch {
 	case err == nil:
 	case errors.Is(err, errUnknownMarket):
-		writeMarketErr(w, r.Log, http.StatusNotFound, fmt.Sprintf("Unknown Market %q.", symbol))
+		writeMarketErr(w, r.Log, http.StatusNotFound, fmt.Sprintf("Unknown Market %q.", market))
 		return
 	case errors.Is(err, errFrozenMarket):
-		r.logger().Warn("market config edit refused", "market", symbol, "actor", actor, "err", err)
+		r.logger().Warn("market config edit refused", "market", market, "actor", actor, "err", err)
 		writeMarketErr(w, r.Log, http.StatusConflict, err.Error())
 		return
 	case errors.Is(err, errBadMarketCfg):
@@ -221,7 +221,7 @@ func (r *AdminRPC) putMarket(w http.ResponseWriter, req *http.Request) {
 		writeMarketErr(w, r.Log, http.StatusInternalServerError, err.Error())
 		return
 	}
-	r.logger().Info("market config edited", "market", symbol, "actor", actor)
+	r.logger().Info("market config edited", "market", market, "actor", actor)
 	writeMarketsJSON(w, updated)
 }
 
@@ -249,34 +249,36 @@ const marketCols = `symbol, base_coin, quote_coin, base_scale, quote_scale,
 // loadMarketForUpdate locks one Market row and returns it resolved the
 // same way LoadMarkets resolves rows (quantization raws included), so
 // the edit math and the engine's apply math cannot disagree.
-func loadMarketForUpdate(ctx context.Context, tx pgx.Tx, symbol string) (MarketCfg, error) {
+func loadMarketForUpdate(ctx context.Context, tx pgx.Tx, market string) (MarketCfg, error) {
 	var m MarketCfg
-	err := tx.QueryRow(ctx, `SELECT `+marketCols+` FROM markets WHERE symbol = $1 FOR UPDATE`, symbol).
-		Scan(&m.Symbol, &m.BaseCoin, &m.QuoteCoin, &m.BaseScale, &m.QuoteScale,
+	// Waiver: the WHERE clause keeps the spec-#21 storage column name
+	// `symbol`; the Go field and the wire/glossary name are Market.
+	err := tx.QueryRow(ctx, `SELECT `+marketCols+` FROM markets WHERE symbol = $1 FOR UPDATE`, market).
+		Scan(&m.Market, &m.BaseCoin, &m.QuoteCoin, &m.BaseScale, &m.QuoteScale,
 			&m.TickSize, &m.LotSize, &m.MakerFee, &m.TakerFee,
 			&m.MinPrice, &m.MaxPrice, &m.MinAmount, &m.MaxAmount, &m.MinTurnover,
 			&m.MarketOrders, &m.Enabled, &m.Visible, &m.Sort, &m.Zone, &m.Featured)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return m, fmt.Errorf("%w: %s", errUnknownMarket, symbol)
+		return m, fmt.Errorf("%w: %s", errUnknownMarket, market)
 	}
 	if err != nil {
 		return m, err
 	}
 	tick, err := rawAtScale(m.TickSize, m.QuoteScale)
 	if err != nil || tick <= 0 {
-		return m, fmt.Errorf("%w: %s: bad tick_size %q", errBadMarketCfg, symbol, m.TickSize)
+		return m, fmt.Errorf("%w: %s: bad tick_size %q", errBadMarketCfg, market, m.TickSize)
 	}
 	lot, err := rawAtScale(m.LotSize, m.BaseScale)
 	if err != nil || lot <= 0 {
-		return m, fmt.Errorf("%w: %s: bad lot_size %q", errBadMarketCfg, symbol, m.LotSize)
+		return m, fmt.Errorf("%w: %s: bad lot_size %q", errBadMarketCfg, market, m.LotSize)
 	}
 	m.TickRaw, m.LotRaw = tick, lot
 	return m, nil
 }
 
-func openOrderCount(ctx context.Context, tx pgx.Tx, symbol string) (int, error) {
+func openOrderCount(ctx context.Context, tx pgx.Tx, market string) (int, error) {
 	var n int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM orders WHERE market = $1 AND status = 'open'`, symbol).Scan(&n); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM orders WHERE market = $1 AND status = 'open'`, market).Scan(&n); err != nil {
 		return 0, err
 	}
 	return n, nil
@@ -466,7 +468,7 @@ func saveMarket(ctx context.Context, tx pgx.Tx, m MarketCfg) error {
 			sort = $16, zone = $17, featured = $18,
 			updated_at = now()
 		WHERE symbol = $1`,
-		m.Symbol, m.BaseScale, m.QuoteScale,
+		m.Market, m.BaseScale, m.QuoteScale,
 		m.TickSize, m.LotSize,
 		m.MakerFee, m.TakerFee,
 		m.MinPrice, m.MaxPrice,

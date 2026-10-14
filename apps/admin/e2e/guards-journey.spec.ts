@@ -47,18 +47,18 @@ test('employee-management guards refuse the lockout shapes server-side', async (
   expect(deleteSeeded.body).toEqual({ message: 'Seeded roles cannot be deleted.' })
 
   // A disable/enable round-trip on a fresh Employee works and audits;
-  // provisioning ends as the staff session, so root signs back in.
-  const staff = await provisionEmployee(page, root!, 'support')
+  // provisioning ends as the Employee session, so root signs back in.
+  const employee = await provisionEmployee(page, root!, 'support')
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
-  const staffID = await employeeIdOf(page, staff.email)
-  const disabled = await pageApi(page, `/api/employees/${staffID}/disable`, 'POST')
+  const employeeID = await employeeIdOf(page, employee.email)
+  const disabled = await pageApi(page, `/api/employees/${employeeID}/disable`, 'POST')
   expect(disabled.status).toBe(200)
-  const enabled = await pageApi(page, `/api/employees/${staffID}/enable`, 'POST')
+  const enabled = await pageApi(page, `/api/employees/${employeeID}/enable`, 'POST')
   expect(enabled.status).toBe(200)
   const disableAudit = await auditRows(page, { actor: root!.email, action: 'disable:employee' })
-  expect(disableAudit.some((row) => row.target === staffID)).toBe(true)
+  expect(disableAudit.some((row) => row.target === employeeID)).toBe(true)
   const enableAudit = await auditRows(page, { actor: root!.email, action: 'enable:employee' })
-  expect(enableAudit.some((row) => row.target === staffID)).toBe(true)
+  expect(enableAudit.some((row) => row.target === employeeID)).toBe(true)
 
   // The last-super-admin shapes need a caller who is NOT the target:
   // widen finance's grants through the grant editor (itself audited),

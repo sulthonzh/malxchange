@@ -20,7 +20,7 @@ import {
   readAdminState,
   registerMember,
   totpCode,
-  type StaffAccount,
+  type EmployeeAccount,
   seatPage,
 } from './helpers'
 
@@ -160,7 +160,7 @@ test('every Step-up action demands and enforces a fresh code server-side', async
     },
   ]
 
-  const actors: Record<'root' | 'finance' | 'compliance', StaffAccount> = {
+  const actors: Record<'root' | 'finance' | 'compliance', EmployeeAccount> = {
     root: { email: root!.email, password: root!.password, totpSecret: root!.totpSecret, role: 'super-admin' },
     finance,
     compliance,

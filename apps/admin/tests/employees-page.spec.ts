@@ -6,7 +6,7 @@ import * as Vue from 'vue'
 import { mountPage, sessionRef, settle, stubNuxtGlobals } from './helpers/nuxtStubs'
 import Employees from '../src/pages/system/employees.vue'
 
-// The Employee management page (issue #57): the staff list, creation
+// The Employee management page (issue #57): the Employee list, creation
 // behind a Step-up prompt, enable/disable, password/TOTP reset behind
 // Step-up, and Role assignment. The guards (self-disable, self-role
 // change, last-super-admin lockout) are prevented client-side and any
@@ -27,9 +27,9 @@ const rootEmployee = {
   created_at: '2026-01-01T00:00:00Z',
 }
 
-const staffEmployee = {
+const supportEmployee = {
   id: 'e-2',
-  email: 'staff@exchange.example.com',
+  email: 'employee@exchange.example.com',
   role_id: 'r-support',
   role: 'support',
   enabled: true,
@@ -39,7 +39,7 @@ const staffEmployee = {
 }
 
 const disabledEmployee = {
-  ...staffEmployee,
+  ...supportEmployee,
   email: 'furloughed@exchange.example.com',
   enabled: false,
   totp_bound: false,
@@ -101,7 +101,7 @@ describe('employees page', () => {
     return button!
   }
 
-  it('renders the staff list with state tags', async () => {
+  it('renders the Employee list with state tags', async () => {
     const wrapper = await mountWith({
       'GET /api/employees': () => [rootEmployee, disabledEmployee],
       'GET /api/roles': () => roles,
@@ -110,12 +110,12 @@ describe('employees page', () => {
     await settle()
 
     expect(rowOf(wrapper, 'root@exchange.example.com').exists()).toBe(true)
-    const staffRow = rowOf(wrapper, 'furloughed@exchange.example.com')
-    expect(staffRow.text()).toContain('support')
-    expect(staffRow.text()).toContain('Disabled')
-    expect(staffRow.text()).toContain('One-time password')
-    expect(staffRow.text()).toContain('Two-factor not enrolled')
-    expect(buttonIn(staffRow, 'Enable').exists()).toBe(true)
+    const disabledRow = rowOf(wrapper, 'furloughed@exchange.example.com')
+    expect(disabledRow.text()).toContain('support')
+    expect(disabledRow.text()).toContain('Disabled')
+    expect(disabledRow.text()).toContain('One-time password')
+    expect(disabledRow.text()).toContain('Two-factor not enrolled')
+    expect(buttonIn(disabledRow, 'Enable').exists()).toBe(true)
   })
 
   it('creates an Employee behind the Step-up prompt and reloads', async () => {
@@ -124,7 +124,7 @@ describe('employees page', () => {
     const wrapper = await mountWith({
       'GET /api/employees': () => {
         listCalls += 1
-        return [rootEmployee, staffEmployee]
+        return [rootEmployee, supportEmployee]
       },
       'GET /api/roles': () => roles,
       'POST /api/employees': create,
@@ -161,7 +161,7 @@ describe('employees page', () => {
 
   it('prevents self-disable client-side without an api call', async () => {
     const wrapper = await mountWith({
-      'GET /api/employees': () => [rootEmployee, staffEmployee],
+      'GET /api/employees': () => [rootEmployee, supportEmployee],
       'GET /api/roles': () => roles,
     })
     await flushPromises()
@@ -194,7 +194,7 @@ describe('employees page', () => {
       if (path === '/api/employees/e-2/disable' && opts?.method === 'POST') {
         return Promise.reject(new Error('The last enabled super-admin cannot be disabled.'))
       }
-      if (path === '/api/employees') return Promise.resolve([rootEmployee, staffEmployee])
+      if (path === '/api/employees') return Promise.resolve([rootEmployee, supportEmployee])
       if (path === '/api/roles') return Promise.resolve(roles)
       return Promise.reject(new Error(`unexpected api call: ${opts?.method ?? 'GET'} ${path}`))
     })
@@ -202,10 +202,10 @@ describe('employees page', () => {
     await flushPromises()
     await settle()
 
-    const staffRow = rowOf(wrapper, 'staff@exchange.example.com')
+    const targetRow = rowOf(wrapper, 'employee@exchange.example.com')
     // The stale client list says the guard does not apply; the button
     // is live and the server refusal must surface.
-    await buttonIn(staffRow, 'Disable').trigger('click')
+    await buttonIn(targetRow, 'Disable').trigger('click')
     await flushPromises()
     await settle()
 
@@ -217,14 +217,14 @@ describe('employees page', () => {
   it('demands the Step-up code on password reset and shows the one-time credential', async () => {
     const reset = vi.fn(() => ({ id: 'e-2', must_rotate: true, one_time_password: 'hex-one-time' }))
     const wrapper = await mountWith({
-      'GET /api/employees': () => [rootEmployee, staffEmployee],
+      'GET /api/employees': () => [rootEmployee, supportEmployee],
       'GET /api/roles': () => roles,
       'POST /api/employees/e-2/reset-password': reset,
     })
     await flushPromises()
     await settle()
 
-    await buttonIn(rowOf(wrapper, 'staff@exchange.example.com'), 'Reset password').trigger('click')
+    await buttonIn(rowOf(wrapper, 'employee@exchange.example.com'), 'Reset password').trigger('click')
     await settle()
 
     // No code: the client-side guard refuses with a visible sentence
@@ -251,14 +251,14 @@ describe('employees page', () => {
   it('resets TOTP behind the Step-up prompt', async () => {
     const reset = vi.fn(() => ({ id: 'e-2', totp_bound: false }))
     const wrapper = await mountWith({
-      'GET /api/employees': () => [rootEmployee, staffEmployee],
+      'GET /api/employees': () => [rootEmployee, supportEmployee],
       'GET /api/roles': () => roles,
       'POST /api/employees/e-2/reset-totp': reset,
     })
     await flushPromises()
     await settle()
 
-    await buttonIn(rowOf(wrapper, 'staff@exchange.example.com'), 'Reset two-factor').trigger('click')
+    await buttonIn(rowOf(wrapper, 'employee@exchange.example.com'), 'Reset two-factor').trigger('click')
     await settle()
     await wrapper.find('input[name="code"]').setValue('654321')
     await buttonIn(wrapper, 'Reset').trigger('click')
@@ -271,7 +271,7 @@ describe('employees page', () => {
   it('blocks self-role change client-side and assigns roles otherwise', async () => {
     const assign = vi.fn(() => ({ id: 'e-2', role: 'finance' }))
     const wrapper = await mountWith({
-      'GET /api/employees': () => [rootEmployee, staffEmployee],
+      'GET /api/employees': () => [rootEmployee, supportEmployee],
       'GET /api/roles': () => roles,
       'POST /api/employees/e-2/role': assign,
     })
@@ -280,7 +280,7 @@ describe('employees page', () => {
 
     expect(buttonIn(rowOf(wrapper, 'root@exchange.example.com'), 'Change role').attributes('disabled')).toBeDefined()
 
-    await buttonIn(rowOf(wrapper, 'staff@exchange.example.com'), 'Change role').trigger('click')
+    await buttonIn(rowOf(wrapper, 'employee@exchange.example.com'), 'Change role').trigger('click')
     await settle()
     await wrapper.find('.el-select__wrapper').trigger('click')
     await settle()

@@ -31,8 +31,8 @@ var (
 // errEmployeeNotFound marks an id/email with no Employee row.
 var errEmployeeNotFound = errors.New("admin: employee not found")
 
-// Employee is one staff account row (redacted copies for responses and
-// the audit envelope come from auditView).
+// Employee is one account row (redacted copies for responses
+// and the audit envelope come from auditView).
 type Employee struct {
 	ID           string
 	Email        string

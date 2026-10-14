@@ -4,7 +4,7 @@
       <div>
         <h1>Employees</h1>
         <p class="hint">
-          Staff identity for the back office. Creating an Employee and resetting their password or
+          Employee identity for the back office. Creating an Employee and resetting their password or
           two-factor demand a fresh authenticator code (Step-up) and hand over a one-time
           credential the Employee must rotate at first sign-in.
         </p>
@@ -241,11 +241,11 @@ async function load(): Promise<void> {
   loading.value = true
   actionError.value = ''
   try {
-    const [staff, roleRows] = await Promise.all([
+    const [employeeRows, roleRows] = await Promise.all([
       apiFetch<EmployeeRow[]>('/api/employees'),
       apiFetch<RoleRow[]>('/api/roles'),
     ])
-    employees.value = staff
+    employees.value = employeeRows
     roles.value = roleRows
   } catch (error) {
     actionError.value =

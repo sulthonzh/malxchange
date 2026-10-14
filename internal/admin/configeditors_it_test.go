@@ -120,7 +120,7 @@ func newStubExchange(t *testing.T) *stubExchange {
 	t.Helper()
 	s := &stubExchange{markets: map[string]map[string]any{
 		"BTC/USDT": {
-			"symbol": "BTC/USDT", "baseCoin": "BTC", "quoteCoin": "USDT",
+			"market": "BTC/USDT", "baseCoin": "BTC", "quoteCoin": "USDT",
 			"baseScale": 8, "quoteScale": 2, "tickSize": "0.10", "lotSize": "0.0001",
 			"makerFeeRate": "0.001", "takerFeeRate": "0.001",
 			"minPrice": nil, "maxPrice": nil, "minAmount": "0", "maxAmount": nil,
@@ -137,12 +137,12 @@ func newStubExchange(t *testing.T) *stubExchange {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(out)
 	})
-	mux.HandleFunc("PUT /markets/{symbol...}", func(w http.ResponseWriter, r *http.Request) {
-		symbol := r.PathValue("symbol")
-		row, ok := s.markets[symbol]
+	mux.HandleFunc("PUT /markets/{market...}", func(w http.ResponseWriter, r *http.Request) {
+		market := r.PathValue("market")
+		row, ok := s.markets[market]
 		if !ok {
 			w.WriteHeader(http.StatusNotFound)
-			_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Unknown Market %q.", symbol)})
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("Unknown Market %q.", market)})
 			return
 		}
 		raw, err := io.ReadAll(r.Body)
@@ -161,7 +161,7 @@ func newStubExchange(t *testing.T) *stubExchange {
 			if _, moves := patch["tickSize"]; moves {
 				w.WriteHeader(http.StatusConflict)
 				_ = json.NewEncoder(w).Encode(map[string]string{
-					"error": "market config frozen while orders rest: " + symbol + " has 2 open orders"})
+					"error": "market config frozen while orders rest: " + market + " has 2 open orders"})
 				return
 			}
 		}
@@ -405,7 +405,7 @@ func TestEngineStatusVisibleToAllRoles(t *testing.T) {
 	rootCookie := root.freshCookie(t, s)
 
 	for _, role := range []string{RoleFinance, RoleCompliance, RoleSupport} {
-		p := s.staff(t, root, rootCookie, role+"@cfgit.test", role)
+		p := s.employee(t, root, rootCookie, role+"@cfgit.test", role)
 		cookie := p.freshCookie(t, s)
 		status, _, raw := s.do(t, "GET", "/api/engine", "", cookie)
 		if status != http.StatusOK {
@@ -449,7 +449,7 @@ func TestConfigEditsRefusedForNonMatrixRoles(t *testing.T) {
 	root := s.fullyProvisioned(t, "root@cfgit.test")
 	rootCookie := root.freshCookie(t, s)
 
-	p := s.staff(t, root, rootCookie, "fin@cfgit.test", RoleFinance)
+	p := s.employee(t, root, rootCookie, "fin@cfgit.test", RoleFinance)
 	cookie := p.freshCookie(t, s)
 
 	if status, _, _ := s.do(t, "PUT", "/api/coins/BTC", `{"confirmations":6}`, cookie); status != http.StatusForbidden {

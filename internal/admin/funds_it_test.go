@@ -134,7 +134,7 @@ func newFundsStack(t *testing.T) *fundsStack {
 }
 
 // authStack re-frames the served admin surface as the auth-core suite's
-// itStack so the Employee helpers (bootstrap, fullyProvisioned, staff,
+// itStack so the Employee helpers (bootstrap, fullyProvisioned, employee,
 // roleIDOf, auditRows) run unchanged against the same server and pool.
 func (s *fundsStack) authStack() *itStack {
 	return &itStack{pool: s.pool, rest: s.rest, t: s.t}
@@ -242,9 +242,9 @@ func fundsActors(t *testing.T, s *fundsStack) (root, fin, sup provisioned, rootC
 	auth := s.authStack()
 	root = auth.fullyProvisioned(t, "funds-root@it.test")
 	rootCookie = root.freshCookie(t, auth)
-	fin = auth.staff(t, root, rootCookie, "funds-finance@it.test", RoleFinance)
+	fin = auth.employee(t, root, rootCookie, "funds-finance@it.test", RoleFinance)
 	finCookie = fin.freshCookie(t, auth)
-	sup = auth.staff(t, root, rootCookie, "funds-support@it.test", RoleSupport)
+	sup = auth.employee(t, root, rootCookie, "funds-support@it.test", RoleSupport)
 	supCookie = sup.freshCookie(t, auth)
 	return root, fin, sup, rootCookie, finCookie, supCookie
 }

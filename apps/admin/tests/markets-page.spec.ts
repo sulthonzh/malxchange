@@ -16,7 +16,7 @@ const collaborators = vi.hoisted(() => ({
 }))
 
 const btcUsdt = {
-  symbol: 'BTC/USDT', baseCoin: 'BTC', quoteCoin: 'USDT',
+  market: 'BTC/USDT', baseCoin: 'BTC', quoteCoin: 'USDT',
   baseScale: 8, quoteScale: 2, tickSize: '0.10', lotSize: '0.0001',
   makerFeeRate: '0.001', takerFeeRate: '0.001',
   minPrice: null, maxPrice: null, minAmount: '0', maxAmount: null,

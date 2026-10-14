@@ -21,7 +21,7 @@ const createRow = {
   action: 'create:employee',
   target: 'e-2',
   before: null,
-  after: { id: 'e-2', email: 'staff@exchange.example.com', enabled: true },
+  after: { id: 'e-2', email: 'employee@exchange.example.com', enabled: true },
   origin_ip: '203.0.113.7',
   created_at: '2026-02-01T12:30:00Z',
 }
@@ -88,7 +88,7 @@ describe('audit log page', () => {
     expect(create.text()).toContain('203.0.113.7')
     // Null halves render as an em dash, not the string "null".
     expect(create.find('.before-json').text()).toContain('—')
-    expect(create.find('.after-json').text()).toContain('"email":"staff@exchange.example.com"')
+    expect(create.find('.after-json').text()).toContain('"email":"employee@exchange.example.com"')
     const grant = rows[1]!
     expect(grant.find('.before-json').text()).toContain('"granted":false')
     expect(grant.find('.after-json').text()).toContain('"granted":true')

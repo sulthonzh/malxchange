@@ -243,7 +243,7 @@ export async function loginHttp(
   return pageApi(page, '/api/login', 'POST', { email, password, code })
 }
 
-export interface StaffAccount {
+export interface EmployeeAccount {
   email: string
   password: string
   totpSecret: string
@@ -254,7 +254,7 @@ function suffix(): string {
   return Math.random().toString(16).slice(2, 10)
 }
 
-/** A per-run unique staff email (audit rows filter on the actor, so
+/** A per-run unique Employee email (audit rows filter on the actor, so
  * uniqueness makes every assertion exact across reruns). */
 export function uniqueEmail(prefix: string): string {
   return `${prefix}-${suffix()}@exchange.example.com`
@@ -314,7 +314,7 @@ export async function provisionEmployee(
   page: Page,
   root: { email: string; password: string; totpSecret: string },
   role: string,
-): Promise<StaffAccount> {
+): Promise<EmployeeAccount> {
   const login = await loginHttp(page, root.email, root.password, await totpCode(root.totpSecret))
   if (login.status !== 200) {
     throw new Error(`root login ${login.status}: ${JSON.stringify(login.body)}`)
@@ -341,7 +341,7 @@ export async function provisionEmployee(
   if (first.status !== 200) {
     throw new Error(`first login ${first.status}: ${JSON.stringify(first.body)}`)
   }
-  const password = `E2e-staff-${suffix()}`
+  const password = `E2e-employee-${suffix()}`
   const rotated = await pageApi(page, '/api/password', 'POST', {
     current_password: oneTime,
     new_password: password,

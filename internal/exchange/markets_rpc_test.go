@@ -14,7 +14,7 @@ import (
 
 func seedCfg() MarketCfg {
 	return MarketCfg{
-		Symbol: "BTC/USDT", BaseCoin: "BTC", QuoteCoin: "USDT",
+		Market: "BTC/USDT", BaseCoin: "BTC", QuoteCoin: "USDT",
 		BaseScale: 8, QuoteScale: 2,
 		TickSize: "0.1", LotSize: "0.0001", TickRaw: 10, LotRaw: 10000,
 		MakerFee: "0.001", TakerFee: "0.001",

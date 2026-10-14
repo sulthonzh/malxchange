@@ -175,9 +175,9 @@ func TestMemberSearchDetailLockUnlockJourney(t *testing.T) {
 	s, stub := newMemberStack(t)
 	root := s.fullyProvisioned(t, "member-root@it.test")
 	rootCookie := root.freshCookie(t, s)
-	support := s.staff(t, root, rootCookie, "member-support@it.test", RoleSupport)
+	support := s.employee(t, root, rootCookie, "member-support@it.test", RoleSupport)
 	supportCookie := support.freshCookie(t, s)
-	compliance := s.staff(t, root, rootCookie, "member-compliance@it.test", RoleCompliance)
+	compliance := s.employee(t, root, rootCookie, "member-compliance@it.test", RoleCompliance)
 	complianceCookie := compliance.freshCookie(t, s)
 
 	stub.members["m-1"] = map[string]any{
@@ -262,9 +262,9 @@ func TestKYCQueueEvidenceReviewJourney(t *testing.T) {
 	s, stub := newMemberStack(t)
 	root := s.fullyProvisioned(t, "kyc-root@it.test")
 	rootCookie := root.freshCookie(t, s)
-	compliance := s.staff(t, root, rootCookie, "kyc-compliance@it.test", RoleCompliance)
+	compliance := s.employee(t, root, rootCookie, "kyc-compliance@it.test", RoleCompliance)
 	complianceCookie := compliance.freshCookie(t, s)
-	support := s.staff(t, root, rootCookie, "kyc-support@it.test", RoleSupport)
+	support := s.employee(t, root, rootCookie, "kyc-support@it.test", RoleSupport)
 	supportCookie := support.freshCookie(t, s)
 
 	stub.queue = map[string]any{"total": 1, "applications": []any{map[string]any{
@@ -340,9 +340,9 @@ func TestMemberTOTPResetStepUpAuditPassthrough(t *testing.T) {
 	s, stub := newMemberStack(t)
 	root := s.fullyProvisioned(t, "reset-root@it.test")
 	rootCookie := root.freshCookie(t, s)
-	compliance := s.staff(t, root, rootCookie, "reset-compliance@it.test", RoleCompliance)
+	compliance := s.employee(t, root, rootCookie, "reset-compliance@it.test", RoleCompliance)
 	complianceCookie := compliance.freshCookie(t, s)
-	support := s.staff(t, root, rootCookie, "reset-support@it.test", RoleSupport)
+	support := s.employee(t, root, rootCookie, "reset-support@it.test", RoleSupport)
 	supportCookie := support.freshCookie(t, s)
 
 	stub.members["m-9"] = map[string]any{"id": "m-9", "email": "totpless@example.com", "status": "active"}

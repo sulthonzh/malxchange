@@ -74,6 +74,9 @@ func (s *Server) handleApproveWithdrawal(w http.ResponseWriter, r *http.Request)
 
 // handleRejectWithdrawal refuses an audited withdrawal and returns the
 // funds through the wallet's Journal (idempotent on the withdrawal id).
+// ADR-0012 waiver: reject/refund are outside the deciding Step-up list
+// (issue #25 Implementation Decisions); they only reverse or return,
+// never move funds out.
 func (s *Server) handleRejectWithdrawal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.wallet.rejectWithdrawal(r.Context(), id, s.actorOf(r)); err != nil {
@@ -110,6 +113,9 @@ func (s *Server) handleRetryWithdrawal(w http.ResponseWriter, r *http.Request) {
 
 // handleRefundWithdrawal returns a failed withdrawal's funds to the
 // member when the Employee decides against a retry.
+// ADR-0012 waiver: reject/refund are outside the deciding Step-up list
+// (issue #25 Implementation Decisions); they only reverse or return,
+// never move funds out.
 func (s *Server) handleRefundWithdrawal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := s.wallet.refundWithdrawal(r.Context(), id, s.actorOf(r)); err != nil {

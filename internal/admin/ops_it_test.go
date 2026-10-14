@@ -174,14 +174,14 @@ func (o *opsStack) do(t *testing.T, method, path, body string, cookie *http.Cook
 func (o *opsStack) financeEmployee(t *testing.T, email string) (*http.Cookie, provisioned) {
 	t.Helper()
 	rootCookie := o.root.freshCookie(t, o.st)
-	p := o.st.staff(t, o.root, rootCookie, email, "finance")
+	p := o.st.employee(t, o.root, rootCookie, email, "finance")
 	return p.freshCookie(t, o.st), p
 }
 
 func (o *opsStack) supportCookie(t *testing.T, email string) *http.Cookie {
 	t.Helper()
 	rootCookie := o.root.freshCookie(t, o.st)
-	p := o.st.staff(t, o.root, rootCookie, email, "support")
+	p := o.st.employee(t, o.root, rootCookie, email, "support")
 	return p.freshCookie(t, o.st)
 }
 

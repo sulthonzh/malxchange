@@ -25,11 +25,11 @@ test('login demands the mandatory TOTP and refuses wrong factors identically', a
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
   await seatPage(page)
 
-  const staff = await provisionEmployee(page, root!, 'support')
+  const employee = await provisionEmployee(page, root!, 'support')
   await pageApi(page, '/api/logout', 'POST')
 
   // A bound Employee signs in with email + password + a live code.
-  const noCode = await loginHttp(page, staff.email, staff.password)
+  const noCode = await loginHttp(page, employee.email, employee.password)
   expect(noCode.status).toBe(401)
   expect(noCode.body).toEqual({ message: 'Your authenticator code is required.' })
 
@@ -37,12 +37,12 @@ test('login demands the mandatory TOTP and refuses wrong factors identically', a
   // for which factor failed.
   const wrongCode = await loginHttp(
     page,
-    staff.email,
-    staff.password,
+    employee.email,
+    employee.password,
     // Ten windows old: a well-formed code no server clock accepts.
-    await totpCode(staff.totpSecret, Date.now() - 10 * 60_000),
+    await totpCode(employee.totpSecret, Date.now() - 10 * 60_000),
   )
-  const wrongPassword = await loginHttp(page, staff.email, 'not-the-password', await totpCode(staff.totpSecret))
+  const wrongPassword = await loginHttp(page, employee.email, 'not-the-password', await totpCode(employee.totpSecret))
   const refused = { message: 'Email, password, or authenticator code is incorrect.' }
   expect(wrongCode.status).toBe(401)
   expect(wrongCode.body).toEqual(refused)
@@ -52,13 +52,13 @@ test('login demands the mandatory TOTP and refuses wrong factors identically', a
   // The live code completes the sign-in and the response carries the
   // Employee's live permission set. The wrong-factor attempts above
   // ran under the provisioned (support) session, which cannot search
-  // the audit log — the staff session owns the assertions below.
-  const signedIn = await loginHttp(page, staff.email, staff.password, await totpCode(staff.totpSecret))
+  // the audit log — the Employee session owns the assertions below.
+  const signedIn = await loginHttp(page, employee.email, employee.password, await totpCode(employee.totpSecret))
   expect(signedIn.status).toBe(200)
   const me = await pageApi(page, '/api/me')
   expect(me.status).toBe(200)
   expect(me.body).toMatchObject({
-    employee: { email: staff.email, role: 'support' },
+    employee: { email: employee.email, role: 'support' },
     totp_bound: true,
   })
 
@@ -71,22 +71,22 @@ test('login demands the mandatory TOTP and refuses wrong factors identically', a
 
   // Every authentication event above left its audit row: the missing
   // code, the two refused sign-ins, the success, the logout — actor
-  // is the login email. The logout revoked the staff session and
-  // staff cannot search the log anyway: the super-admin
+  // is the login email. The logout revoked the Employee session and
+  // the Employee cannot search the log anyway: the super-admin
   // re-authenticates for the searches.
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
-  const failed = await auditRows(page, { actor: staff.email, action: 'login:failed' })
+  const failed = await auditRows(page, { actor: employee.email, action: 'login:failed' })
   expect(failed).toHaveLength(3)
-  // The staff Employee is the only actor with this email... except
+  // This Employee is the only actor with this email... except
   // the re-authenticating super-admin signs in AS them for the
   // search: assert the search finds this test's success row among the
   // actor's rows rather than an exact global count.
-  const success = await auditRows(page, { actor: staff.email, action: 'login:employee' })
+  const success = await auditRows(page, { actor: employee.email, action: 'login:employee' })
   expect(success.length).toBeGreaterThanOrEqual(2)
-  // Same self-counting shape for the logout search: the staff logout
+  // Same self-counting shape for the logout search: the Employee logout
   // under test plus the re-authenticating super-admin's logout trail
   // share the actor, so assert membership, not an exact count.
-  const loggedOut = await auditRows(page, { actor: staff.email, action: 'logout:employee' })
+  const loggedOut = await auditRows(page, { actor: employee.email, action: 'logout:employee' })
   expect(loggedOut.length).toBeGreaterThanOrEqual(1)
 })
 
@@ -95,22 +95,22 @@ test('five failed sign-ins lock the account and the lockout is audited', async (
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
   await seatPage(page)
 
-  const staff = await provisionEmployee(page, root!, 'support')
+  const employee = await provisionEmployee(page, root!, 'support')
   await pageApi(page, '/api/logout', 'POST')
 
   // Five wrong passwords: all refused with the identical sentence.
   for (let attempt = 1; attempt <= 5; attempt += 1) {
-    const refused = await loginHttp(page, staff.email, 'not-the-password')
+    const refused = await loginHttp(page, employee.email, 'not-the-password')
     expect(refused.status, `attempt ${attempt}`).toBe(401)
     expect(refused.body).toEqual({ message: 'Email, password, or authenticator code is incorrect.' })
   }
 
   // The lock bites the NEXT attempt — even with fully correct
   // credentials, so a stolen secret cannot brute-force the lock away.
-  const locked = await loginHttp(page, staff.email, staff.password, await totpCode(staff.totpSecret))
+  const locked = await loginHttp(page, employee.email, employee.password, await totpCode(employee.totpSecret))
   expect(locked.status).toBe(429)
   expect(locked.body).toEqual({ message: 'Too many failed sign-in attempts. Try again in a few minutes.' })
-  const stillLocked = await loginHttp(page, staff.email, staff.password, await totpCode(staff.totpSecret))
+  const stillLocked = await loginHttp(page, employee.email, employee.password, await totpCode(employee.totpSecret))
   expect(stillLocked.status).toBe(429)
 
   // The audit log carries every refused attempt AND the lockouts —
@@ -118,9 +118,9 @@ test('five failed sign-ins lock the account and the lockout is audited', async (
   // revoked this session, so re-authenticate for the searches.
   const rootCode = await totpCode(root!.totpSecret)
   await loginHttp(page, root!.email, root!.password, rootCode)
-  const failed = await auditRows(page, { actor: staff.email, action: 'login:failed' })
+  const failed = await auditRows(page, { actor: employee.email, action: 'login:failed' })
   expect(failed).toHaveLength(5)
-  const lockouts = await auditRows(page, { actor: staff.email, action: 'login:lockout' })
+  const lockouts = await auditRows(page, { actor: employee.email, action: 'login:lockout' })
   expect(lockouts.length).toBeGreaterThanOrEqual(2)
   for (const row of lockouts) {
     expect(row.origin_ip.length).toBeGreaterThan(0)
@@ -136,19 +136,19 @@ test('forced-setup events and the disable guard leave their audit rows', async (
   // rotation, enrollment begin, binding confirm — every step is a
   // mutation the middleware must have audited, with the create row
   // naming the super-admin as actor and the new Employee as target.
-  const staff = await provisionEmployee(page, root!, 'finance')
+  const employee = await provisionEmployee(page, root!, 'finance')
 
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
   const create = await auditRows(page, { actor: root!.email, action: 'create:employee' })
-  const createdRow = create.find((row) => JSON.stringify(row.after).includes(staff.email))
+  const createdRow = create.find((row) => JSON.stringify(row.after).includes(employee.email))
   expect(createdRow, 'the create audit row names the new Employee').toBeTruthy()
   expect(createdRow!.target).toBeTruthy()
 
-  const rotated = await auditRows(page, { actor: staff.email, action: 'rotate:password' })
+  const rotated = await auditRows(page, { actor: employee.email, action: 'rotate:password' })
   expect(rotated).toHaveLength(1)
-  const enrolled = await auditRows(page, { actor: staff.email, action: 'enroll:totp' })
+  const enrolled = await auditRows(page, { actor: employee.email, action: 'enroll:totp' })
   expect(enrolled).toHaveLength(1)
-  const bound = await auditRows(page, { actor: staff.email, action: 'bind:totp' })
+  const bound = await auditRows(page, { actor: employee.email, action: 'bind:totp' })
   expect(bound).toHaveLength(1)
 
   // The provisioned Employee is audited down to the before/after JSON:
@@ -159,12 +159,12 @@ test('forced-setup events and the disable guard leave their audit rows', async (
   // A disabled account cannot sign in, and both the disable and the
   // refused sign-in leave their rows.
   await loginHttp(page, root!.email, root!.password, await totpCode(root!.totpSecret))
-  const id = await employeeIdOf(page, staff.email)
+  const id = await employeeIdOf(page, employee.email)
   const disabled = await pageApi(page, `/api/employees/${id}/disable`, 'POST')
   expect(disabled.status).toBe(200)
   await pageApi(page, '/api/logout', 'POST')
 
-  const refused = await loginHttp(page, staff.email, staff.password, await totpCode(staff.totpSecret))
+  const refused = await loginHttp(page, employee.email, employee.password, await totpCode(employee.totpSecret))
   expect(refused.status).toBe(403)
   expect(refused.body).toEqual({ message: 'This account is disabled.' })
 
@@ -174,6 +174,6 @@ test('forced-setup events and the disable guard leave their audit rows', async (
   const disableRows = await auditRows(page, { actor: root!.email, action: 'disable:employee' })
   const disableRow = disableRows.find((row) => row.target === id)
   expect(disableRow, 'the disable audit row names the target Employee').toBeTruthy()
-  const failedRows = await auditRows(page, { actor: staff.email, action: 'login:failed' })
+  const failedRows = await auditRows(page, { actor: employee.email, action: 'login:failed' })
   expect(failedRows.length).toBeGreaterThanOrEqual(1)
 })

@@ -135,7 +135,7 @@ test('grants-free Employee: sidebar hides ungranted routes and the server refuse
   const root = readAdminState()
   test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
 
-  // Staff provisioning goes through the admin-api itself — Step-up
+  // Employee provisioning goes through the admin-api itself — Step-up
   // included, which is the caller's fresh TOTP code. The calls run
   // inside the browser page so the edge, the host mapping, and the
   // cookie jar all apply.
@@ -165,10 +165,10 @@ test('grants-free Employee: sidebar hides ungranted routes and the server refuse
     expect(revoked.status, JSON.stringify(revoked.body)).toBe(200)
   }
 
-  const staffEmail = `support-e2e-${suffix()}@exchange.example.com`
+  const employeeEmail = `support-e2e-${suffix()}@exchange.example.com`
   const oneTime = `E2e-one-time-${suffix()}`
   const created = await pageApi(page, '/api/employees', 'POST', {
-    email: staffEmail,
+    email: employeeEmail,
     password: oneTime,
     role_id: support!.id,
     code: await totpCode(root!.totpSecret),
@@ -176,11 +176,11 @@ test('grants-free Employee: sidebar hides ungranted routes and the server refuse
   expect(created.status, JSON.stringify(created.body)).toBe(200)
 
   // The fresh Employee walks the same forced rotation in the browser.
-  await loginThroughUi(page, staffEmail, oneTime)
+  await loginThroughUi(page, employeeEmail, oneTime)
   await expect(page).toHaveURL('/setup/password')
-  const staffPassword = `E2e-staff-${suffix()}`
-  await rotateThroughUi(page, oneTime, staffPassword)
-  await loginThroughUi(page, staffEmail, staffPassword)
+  const employeePassword = `E2e-employee-${suffix()}`
+  await rotateThroughUi(page, oneTime, employeePassword)
+  await loginThroughUi(page, employeeEmail, employeePassword)
   await expect(page).toHaveURL('/setup/totp')
   await enrollTotpThroughUi(page)
 
@@ -239,7 +239,7 @@ test('employee management from the UI: create with Step-up, reset password, disa
 
   // Create behind the Step-up prompt: an empty code is refused with a
   // visible sentence before anything is sent.
-  const email = `ui-staff-${suffix()}@exchange.example.com`
+  const email = `ui-employee-${suffix()}@exchange.example.com`
   // Closed dialogs stay in the DOM hidden — every interaction scopes
   // to the open dialog's class, never the bare .el-dialog.
   await page.click('button:has-text("Create Employee")')

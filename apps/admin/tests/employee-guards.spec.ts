@@ -57,7 +57,7 @@ describe('disableRefusal', () => {
 
   it('allows a plain target', () => {
     const actor = employee({ id: 'e-9', email: 'root@exchange.example.com' })
-    const target = employee({ id: 'e-2', email: 'staff@exchange.example.com', role: 'support', role_id: 'r-3' })
+    const target = employee({ id: 'e-2', email: 'employee@exchange.example.com', role: 'support', role_id: 'r-3' })
     expect(disableRefusal(target, 'e-9', [actor, target])).toBeNull()
   })
 })
@@ -80,7 +80,7 @@ describe('roleChangeRefusal', () => {
 
   it('allows a plain reassignment', () => {
     const actor = employee({ id: 'e-9' })
-    const target = employee({ id: 'e-2', email: 'staff@exchange.example.com', role: 'support', role_id: 'r-3' })
+    const target = employee({ id: 'e-2', email: 'employee@exchange.example.com', role: 'support', role_id: 'r-3' })
     expect(roleChangeRefusal(target, 'e-9', 'finance', [actor, target])).toBeNull()
   })
 })

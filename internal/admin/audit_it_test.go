@@ -37,10 +37,10 @@ func TestAuditLogSearchFilters(t *testing.T) {
 	root := s.fullyProvisioned(t, "audit-root@it.test")
 	cookie := root.freshCookie(t, s)
 
-	// Rows come from the real surface: two staff creates (each with the
+	// Rows come from the real surface: two Employee creates (each with the
 	// journeys' logins around them).
-	fin := s.staff(t, root, cookie, "audit-fin@it.test", RoleFinance)
-	sup := s.staff(t, root, cookie, "audit-sup@it.test", RoleSupport)
+	fin := s.employee(t, root, cookie, "audit-fin@it.test", RoleFinance)
+	sup := s.employee(t, root, cookie, "audit-sup@it.test", RoleSupport)
 
 	// Unfiltered: the log carries the creates plus every journey login,
 	// newest first, each row fully rendered (actor, action, target,
@@ -73,7 +73,7 @@ func TestAuditLogSearchFilters(t *testing.T) {
 		}
 	}
 
-	// Action filter: the two staff creates plus the installer's
+	// Action filter: the two Employee creates plus the installer's
 	// bootstrap (the same action string, system actor).
 	status, page, raw = searchAudit(t, s, cookie, "?action="+PermCreateEmployee)
 	if status != http.StatusOK || page.Total != 3 {
@@ -87,10 +87,10 @@ func TestAuditLogSearchFilters(t *testing.T) {
 		targets[row.Target] = true
 	}
 	if !targets[fin.EmpID] || !targets[sup.EmpID] {
-		t.Fatalf("create rows target the staff ids, got %v", targets)
+		t.Fatalf("create rows target the Employee ids, got %v", targets)
 	}
 
-	// Actor filter: the root performed both creates; the finance staff
+	// Actor filter: the root performed both creates; the finance Employee
 	// performed none.
 	status, page, raw = searchAudit(t, s, cookie, "?action="+PermCreateEmployee+"&actor=audit-root@it.test")
 	if status != http.StatusOK || page.Total != 2 {
@@ -98,10 +98,10 @@ func TestAuditLogSearchFilters(t *testing.T) {
 	}
 	status, page, _ = searchAudit(t, s, cookie, "?action="+PermCreateEmployee+"&actor=audit-fin@it.test")
 	if status != http.StatusOK || page.Total != 0 {
-		t.Fatalf("staff actor search: %d total %d", status, page.Total)
+		t.Fatalf("employee actor search: %d total %d", status, page.Total)
 	}
 
-	// Target filter: one create row, the finance staff's.
+	// Target filter: one create row, the finance Employee's.
 	status, page, raw = searchAudit(t, s, cookie, "?action="+PermCreateEmployee+"&target="+fin.EmpID)
 	if status != http.StatusOK || page.Total != 1 || page.Rows[0].Target != fin.EmpID {
 		t.Fatalf("target search: %d total %d body %s", status, page.Total, raw)
@@ -197,7 +197,7 @@ func TestPermissionCatalogEndpoint(t *testing.T) {
 	// view:permission to finance and the finance Employee sees it too.
 	financeID := s.roleIDOf(t, cookie, RoleFinance)
 	s.setGrant(t, cookie, financeID, PermViewPermission, true)
-	fin := s.staff(t, root, cookie, "catalog-fin@it.test", RoleFinance)
+	fin := s.employee(t, root, cookie, "catalog-fin@it.test", RoleFinance)
 	if status, _, raw := s.do(t, "GET", "/api/permissions", "", fin.freshCookie(t, s)); status != http.StatusOK || !strings.Contains(raw, PermViewEmployee) {
 		t.Fatalf("finance catalog read after grant: %d %s", status, raw)
 	}

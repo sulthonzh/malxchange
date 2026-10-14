@@ -17,7 +17,7 @@
     </p>
     <el-alert v-if="loadError" class="error" type="error" :closable="false" :title="loadError" />
     <el-table v-if="markets.length" :data="markets" size="small">
-      <el-table-column prop="symbol" label="Market" width="110" />
+      <el-table-column prop="market" label="Market" width="110" />
       <el-table-column label="State" width="90">
         <template #default="{ row }">
           <el-tag :type="row.enabled ? 'success' : 'danger'" size="small">
@@ -62,7 +62,7 @@
 
     <el-card v-if="editing" class="editor" shadow="never">
       <template #header>
-        <span>Editing {{ form.symbol }}</span>
+        <span>Editing {{ form.market }}</span>
       </template>
       <el-alert v-if="saveError" class="error" type="error" :closable="false" :title="saveError" />
       <el-form label-position="top" @submit.prevent="save">
@@ -131,7 +131,7 @@
 <script setup lang="ts">
 // The wire shape of the exchange's Market config rows (ADR-0009).
 export interface MarketRow {
-  symbol: string
+  market: string
   baseCoin: string
   quoteCoin: string
   baseScale: number
@@ -247,9 +247,9 @@ async function save(): Promise<void> {
   saving.value = true
   saveError.value = ''
   try {
-    // The symbol rides the path raw (house style — the member app's
+    // The market rides the path raw (house style — the member app's
     // /market/depth/BTC/USDT paths do the same).
-    await apiFetch<MarketRow>(`/api/markets/${form.value.symbol}`, {
+    await apiFetch<MarketRow>(`/api/markets/${form.value.market}`, {
       method: 'PUT',
       body,
     })

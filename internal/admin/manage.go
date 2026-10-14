@@ -36,7 +36,7 @@ type employeeListEntry struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-// handleListEmployees answers the staff list, redacted — no hashes,
+// handleListEmployees answers the Employee list, redacted — no hashes,
 // no secrets, ever.
 func (s *Server) handleListEmployees(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),

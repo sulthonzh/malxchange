@@ -107,6 +107,8 @@ test:
 
 # Integration tests talk to the dev infra over loopback; the superuser
 # credential comes from deploy/.env (same one the compose init uses).
+# The break-glass CLI's per-command suite (cmd/breakglass, issue #55)
+# rides along — it needs Postgres and nothing else.
 test-integration:
 	$(ENV_GUARD)
 	set -a; . deploy/.env; set +a; \
@@ -114,7 +116,7 @@ test-integration:
 	MAL_TEST_PG_SUPERUSER_PASSWORD=$${MAL_PG_SUPERUSER_PASSWORD} \
 	MAL_TEST_KAFKA_SEEDS=127.0.0.1:9092 \
 	MAL_TEST_KAFKA_USER=$${MAL_KAFKA_USER} MAL_TEST_KAFKA_PASSWORD=$${MAL_KAFKA_PASSWORD} \
-	go test -count=1 -timeout 240s -tags integration -p 1 ./internal/...
+	go test -count=1 -timeout 240s -tags integration -p 1 ./internal/... ./cmd/breakglass
 
 test-profile-up: deploy/.env
 	$(COMPOSE_TEST) --profile test up -d --wait

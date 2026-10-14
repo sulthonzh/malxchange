@@ -152,7 +152,7 @@ case "${BOOT_RC}" in
                 chmod 600 "${CRED_FILE}"
                 ;;
             exists*)
-                say "first Employee already exists — bootstrap skipped (recover a lost one via the break-glass runbook, ADR-0012)"
+                say "first Employee already exists — bootstrap skipped (recover a lost one via install/break-glass.md, ADR-0012)"
                 ;;
             *)
                 die "unexpected bootstrap answer: ${BOOT_OUT}"

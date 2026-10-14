@@ -1,4 +1,4 @@
-package api
+package auth
 
 import (
 	"crypto/rand"
@@ -14,19 +14,19 @@ import (
 
 const secretBytes = 32
 
-// newSecret mints an opaque secret (token or ticket).
-func newSecret() (string, error) {
+// NewSecret mints an opaque secret (token or ticket).
+func NewSecret() (string, error) {
 	b := make([]byte, secretBytes)
 	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("api: secret: %w", err)
+		return "", fmt.Errorf("auth: secret: %w", err)
 	}
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// tokenDigest digests an opaque token for storage. Unlike 6-digit
-// Verification codes the token is 256-bit random, so purpose scoping
+// TokenDigest digests an opaque token for storage. Unlike 6-digit
+// verification codes the token is 256-bit random, so purpose scoping
 // adds nothing — the plain digest is the stored form.
-func tokenDigest(token string) string {
+func TokenDigest(token string) string {
 	sum := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(sum[:])
 }

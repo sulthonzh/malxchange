@@ -25,6 +25,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/syaikhipin/malxchange/internal/auth"
 )
 
 // Code purposes for the sensitive flows. Codes only ever validate
@@ -126,7 +128,7 @@ func (a *memberAPI) sendEmailCode(ctx context.Context, email, purpose, action st
 }
 
 func (a *memberAPI) requirePassword(w http.ResponseWriter, r *http.Request, m memberRecord, password string) bool {
-	if !verifyPassword(m.PasswordHash, password) {
+	if !auth.VerifyPassword(m.PasswordHash, password) {
 		WriteError(w, http.StatusUnauthorized, "The password is incorrect.")
 		return false
 	}
@@ -135,7 +137,7 @@ func (a *memberAPI) requirePassword(w http.ResponseWriter, r *http.Request, m me
 
 // ---- password change / forgot password ----
 
-func (a *memberAPI) handlePasswordChangeCode(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handlePasswordChangeCode(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	m, err := a.loadMember(r.Context(), s.MemberID)
 	if err != nil {
 		writeErr(w, a.log, err)
@@ -159,7 +161,7 @@ type passwordChangeRequest struct {
 	NewPassword string `json:"newPassword"`
 }
 
-func (a *memberAPI) handlePasswordChange(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handlePasswordChange(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req passwordChangeRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -172,7 +174,7 @@ func (a *memberAPI) handlePasswordChange(w http.ResponseWriter, r *http.Request,
 	if !a.requirePassword(w, r, m, req.OldPassword) {
 		return
 	}
-	if err := checkPasswordPolicy(req.NewPassword); err != nil {
+	if err := auth.CheckPasswordPolicy(req.NewPassword); err != nil {
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -190,7 +192,7 @@ func (a *memberAPI) handlePasswordChange(w http.ResponseWriter, r *http.Request,
 // setPasswordAndRevokeAll is the shared tail of password change and
 // forgot-password reset: a password event revokes every session.
 func (a *memberAPI) setPasswordAndRevokeAll(ctx context.Context, memberID, newPassword string) error {
-	hash, err := hashPassword(newPassword)
+	hash, err := auth.HashPassword(newPassword)
 	if err != nil {
 		return err
 	}
@@ -255,7 +257,7 @@ func (a *memberAPI) handleForgotReset(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if err := checkPasswordPolicy(req.NewPassword); err != nil {
+	if err := auth.CheckPasswordPolicy(req.NewPassword); err != nil {
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -290,7 +292,7 @@ type emailChangeRequest struct {
 	NewEmail string `json:"newEmail"`
 }
 
-func (a *memberAPI) handleEmailChangeRequest(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleEmailChangeRequest(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req emailChangeRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -378,7 +380,7 @@ type emailChangeConfirm struct {
 	NewCode  string `json:"newCode"`
 }
 
-func (a *memberAPI) handleEmailChangeConfirm(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleEmailChangeConfirm(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req emailChangeConfirm
 	if !decodeBody(w, r, &req) {
 		return
@@ -421,7 +423,7 @@ type phoneBindRequest struct {
 	Code     string `json:"code"`
 }
 
-func (a *memberAPI) handlePhoneBind(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handlePhoneBind(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req phoneBindRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -457,7 +459,7 @@ func (a *memberAPI) handlePhoneBind(w http.ResponseWriter, r *http.Request, s Se
 
 // ---- Authenticator (TOTP) ----
 
-func (a *memberAPI) handleAuthenticatorCode(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleAuthenticatorCode(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	m, err := a.loadMember(r.Context(), s.MemberID)
 	if err != nil {
 		writeErr(w, a.log, err)
@@ -479,7 +481,7 @@ type authenticatorBeginRequest struct {
 	Code string `json:"code"` // the emailed code (session + email code)
 }
 
-func (a *memberAPI) handleAuthenticatorBegin(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleAuthenticatorBegin(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req authenticatorBeginRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -504,7 +506,7 @@ func (a *memberAPI) handleAuthenticatorBegin(w http.ResponseWriter, r *http.Requ
 		WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	secret, err := generateTOTPSecret()
+	secret, err := auth.GenerateTOTPSecret()
 	if err != nil {
 		writeErr(w, a.log, err)
 		return
@@ -522,7 +524,7 @@ func (a *memberAPI) handleAuthenticatorBegin(w http.ResponseWriter, r *http.Requ
 	// their authenticator app and proves possession with a live code.
 	writeJSON(w, http.StatusOK, map[string]string{
 		"secret":     secret,
-		"otpauthUri": otpauthURI(m.Email, secret),
+		"otpauthUri": auth.OTPAuthURI(m.Email, secret),
 	})
 }
 
@@ -530,7 +532,7 @@ type authenticatorConfirmRequest struct {
 	Code string `json:"code"` // a live code from the authenticator app
 }
 
-func (a *memberAPI) handleAuthenticatorConfirm(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleAuthenticatorConfirm(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req authenticatorConfirmRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -546,7 +548,7 @@ func (a *memberAPI) handleAuthenticatorConfirm(w http.ResponseWriter, r *http.Re
 		writeErr(w, a.log, err)
 		return
 	}
-	if !verifyTOTP(secret, req.Code, time.Now()) {
+	if !auth.VerifyTOTP(secret, req.Code, time.Now()) {
 		WriteError(w, http.StatusBadRequest, "That authenticator code is not correct. Check the time on your phone and try again.")
 		return
 	}
@@ -564,7 +566,7 @@ type authenticatorUnbindRequest struct {
 	Code     string `json:"code"` // a live Authenticator code
 }
 
-func (a *memberAPI) handleAuthenticatorUnbind(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleAuthenticatorUnbind(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req authenticatorUnbindRequest
 	if !decodeBody(w, r, &req) {
 		return
@@ -588,7 +590,7 @@ func (a *memberAPI) handleAuthenticatorUnbind(w http.ResponseWriter, r *http.Req
 		writeErr(w, a.log, err)
 		return
 	}
-	if !verifyTOTP(secret, req.Code, time.Now()) {
+	if !auth.VerifyTOTP(secret, req.Code, time.Now()) {
 		WriteError(w, http.StatusBadRequest, "That authenticator code is not correct. Check the time on your phone and try again.")
 		return
 	}
@@ -602,7 +604,7 @@ func (a *memberAPI) handleAuthenticatorUnbind(w http.ResponseWriter, r *http.Req
 
 // ---- security summary + KYC ----
 
-func (a *memberAPI) handleSecurity(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleSecurity(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	m, err := a.loadMember(r.Context(), s.MemberID)
 	if err != nil {
 		writeErr(w, a.log, err)
@@ -647,7 +649,7 @@ type kycSubmitRequest struct {
 	BackImage      string `json:"backImage"`  // base64
 }
 
-func (a *memberAPI) handleKYCSubmit(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleKYCSubmit(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var req kycSubmitRequest
 	if !decodeBodyLarge(w, r, &req, 12<<20) {
 		return
@@ -706,7 +708,7 @@ func decodeKYCImage(b64 string) ([]byte, error) {
 	return raw, nil
 }
 
-func (a *memberAPI) handleKYCState(w http.ResponseWriter, r *http.Request, s Session) {
+func (a *memberAPI) handleKYCState(w http.ResponseWriter, r *http.Request, s auth.Session) {
 	var out struct {
 		Status         string `json:"status"`
 		FullName       string `json:"fullName,omitempty"`
@@ -769,7 +771,7 @@ func (g securityGate) VerifyAuthenticatorCode(ctx context.Context, memberID, cod
 	if err != nil {
 		return false, fmt.Errorf("api: gate authenticator secret: %w", err)
 	}
-	return verifyTOTP(secret, code, time.Now()), nil
+	return auth.VerifyTOTP(secret, code, time.Now()), nil
 }
 
 // ---- admin internal RPCs ----

@@ -1,4 +1,4 @@
-package api
+package auth
 
 import (
 	"testing"
@@ -18,12 +18,12 @@ func TestTOTPCodeMatchesRFC6238Vectors(t *testing.T) {
 		{1234567890, "005924"},
 	}
 	for _, tc := range cases {
-		got, err := totpCode(secret, time.Unix(tc.unix, 0).UTC())
+		got, err := TOTPCode(secret, time.Unix(tc.unix, 0).UTC())
 		if err != nil {
-			t.Fatalf("totpCode(%d): %v", tc.unix, err)
+			t.Fatalf("TOTPCode(%d): %v", tc.unix, err)
 		}
 		if got != tc.want {
-			t.Errorf("totpCode(%d) = %s, want %s", tc.unix, got, tc.want)
+			t.Errorf("TOTPCode(%d) = %s, want %s", tc.unix, got, tc.want)
 		}
 	}
 }
@@ -31,20 +31,37 @@ func TestTOTPCodeMatchesRFC6238Vectors(t *testing.T) {
 func TestVerifyTOTPAcceptsNeighboringSteps(t *testing.T) {
 	secret := "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 	now := time.Unix(1234567890, 0).UTC()
-	code, err := totpCode(secret, now)
+	code, err := TOTPCode(secret, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !verifyTOTP(secret, code, now) {
+	if !VerifyTOTP(secret, code, now) {
 		t.Fatal("current step rejected")
 	}
-	if !verifyTOTP(secret, code, now.Add(20*time.Second)) {
+	if !VerifyTOTP(secret, code, now.Add(20*time.Second)) {
 		t.Fatal("same-step later second rejected")
 	}
-	if verifyTOTP(secret, "000000", now) && code != "000000" {
+	if VerifyTOTP(secret, "000000", now) && code != "000000" {
 		t.Fatal("wrong code accepted")
 	}
-	if verifyTOTP(secret, "12345", now) {
+	if VerifyTOTP(secret, "12345", now) {
 		t.Fatal("short code accepted")
+	}
+}
+
+func TestGenerateTOTPSecretIsBase32(t *testing.T) {
+	a, err := GenerateTOTPSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := GenerateTOTPSecret()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a == b {
+		t.Fatal("two generated secrets are identical")
+	}
+	if _, err := TOTPCode(a, time.Now()); err != nil {
+		t.Fatalf("generated secret undecodable: %v", err)
 	}
 }

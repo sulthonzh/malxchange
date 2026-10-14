@@ -1,8 +1,9 @@
 // Authenticator codes: RFC 4226 HOTP / RFC 6238 TOTP (SHA-1, 30-second
-// step, 6 digits) — the withdrawal second factor (ADR-0006). The secret
-// is a 160-bit base32 value shown to the member exactly once, at bind
-// begin; only the api schema ever stores it.
-package api
+// step, 6 digits) — the withdrawal second factor (ADR-0006) and the
+// mandatory Employee login factor plus Step-up (ADR-0012). The secret
+// is a 160-bit base32 value shown to the account holder exactly once,
+// at bind begin.
+package auth
 
 import (
 	"crypto/hmac"
@@ -22,21 +23,21 @@ const (
 	totpDigits = 6
 )
 
-// generateTOTPSecret mints a fresh 160-bit secret in base32 (no padding,
+// GenerateTOTPSecret mints a fresh 160-bit secret in base32 (no padding,
 // the form authenticator apps accept).
-func generateTOTPSecret() (string, error) {
+func GenerateTOTPSecret() (string, error) {
 	raw := make([]byte, 20)
 	if _, err := rand.Read(raw); err != nil {
-		return "", fmt.Errorf("api: authenticator secret: %w", err)
+		return "", fmt.Errorf("auth: authenticator secret: %w", err)
 	}
 	return base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(raw), nil
 }
 
-// totpCode computes the code for the step containing t.
-func totpCode(secret string, t time.Time) (string, error) {
+// TOTPCode computes the code for the step containing t.
+func TOTPCode(secret string, t time.Time) (string, error) {
 	key, err := base32.StdEncoding.WithPadding(base32.NoPadding).DecodeString(strings.ToUpper(secret))
 	if err != nil {
-		return "", fmt.Errorf("api: authenticator secret decode: %w", err)
+		return "", fmt.Errorf("auth: authenticator secret decode: %w", err)
 	}
 	counter := uint64(t.Unix()) / uint64(totpStep.Seconds())
 	var buf [8]byte
@@ -52,14 +53,14 @@ func totpCode(secret string, t time.Time) (string, error) {
 	return fmt.Sprintf("%06d", value%1000000), nil
 }
 
-// verifyTOTP accepts the current step's code and one step either side
-// (clock skew between the member's phone and the server).
-func verifyTOTP(secret, code string, now time.Time) bool {
+// VerifyTOTP accepts the current step's code and one step either side
+// (clock skew between the account holder's phone and the server).
+func VerifyTOTP(secret, code string, now time.Time) bool {
 	if len(code) != totpDigits {
 		return false
 	}
 	for _, delta := range []time.Duration{-totpStep, 0, totpStep} {
-		want, err := totpCode(secret, now.Add(delta))
+		want, err := TOTPCode(secret, now.Add(delta))
 		if err != nil {
 			return false
 		}
@@ -70,10 +71,10 @@ func verifyTOTP(secret, code string, now time.Time) bool {
 	return false
 }
 
-// otpauthURI renders the provisioning URI authenticator apps scan. The
-// label carries the member's email so the account is recognizable in
+// OTPAuthURI renders the provisioning URI authenticator apps scan. The
+// label carries the account's email so the account is recognizable in
 // the app; the issuer pins the service name.
-func otpauthURI(email, secret string) string {
+func OTPAuthURI(email, secret string) string {
 	label := url.PathEscape("malxchange:" + email)
 	q := url.Values{
 		"secret": {secret},

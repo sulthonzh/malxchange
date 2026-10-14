@@ -14,6 +14,8 @@ import (
 	"regexp"
 	"testing"
 	"time"
+
+	"github.com/syaikhipin/malxchange/internal/auth"
 )
 
 var secCodeRe = regexp.MustCompile(`\b(\d{6})\b`)
@@ -71,7 +73,7 @@ func (s *itStack) bindAuthenticator(token, email string) string {
 	if secret == "" {
 		s.t.Fatalf("authenticator begin returned no secret: %v", body)
 	}
-	live, err := totpCode(secret, time.Now())
+	live, err := auth.TOTPCode(secret, time.Now())
 	if err != nil {
 		s.t.Fatal(err)
 	}
@@ -192,7 +194,7 @@ func TestAuthenticatorBindUnbindAndGate(t *testing.T) {
 		"password": "the-password", "code": "000000"}, token); status != http.StatusBadRequest {
 		t.Fatalf("unbind wrong code: status %d", status)
 	}
-	live, err := totpCode(secret, time.Now())
+	live, err := auth.TOTPCode(secret, time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -28,6 +28,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/syaikhipin/malxchange/internal/auth"
 	"github.com/syaikhipin/malxchange/internal/kafka"
 	"github.com/syaikhipin/malxchange/internal/service"
 )
@@ -122,7 +123,7 @@ func (s *wsServer) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	memberID := ""
 	if token != "" {
-		sess, err := resolveSession(r.Context(), s.pool, token, s.env.SessionTTL)
+		sess, err := auth.ResolveSession(r.Context(), s.pool, token, s.env.slidingSessions())
 		if err != nil {
 			// The same honest sentence REST answers with; missing,
 			// expired, and revoked tokens are indistinguishable.

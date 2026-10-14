@@ -97,11 +97,11 @@ func BootstrapRequested() bool {
 func RunBootstrapClient(ctx context.Context) int {
 	var req bootstrapRequest
 	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
-		fmt.Fprintln(os.Stderr, "bootstrap: read credentials from stdin:", err)
+		fmt.Println("bootstrap-refused stdin: read credentials:", err)
 		return 2
 	}
 	if strings.TrimSpace(req.Email) == "" || req.Password == "" {
-		fmt.Fprintln(os.Stderr, "bootstrap: stdin must be {\"email\":...,\"password\":...}")
+		fmt.Println(`bootstrap-refused stdin: need {"email":...,"password":...}`)
 		return 2
 	}
 	payload, err := json.Marshal(req)

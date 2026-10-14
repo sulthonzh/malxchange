@@ -23,7 +23,8 @@ type Server struct {
 	pool      *pgxpool.Pool
 	env       *AdminEnv
 	log       *slog.Logger
-	grants    grantCache    // roleID → granted permission strings, invalidated on grant edits
+	grants    grantCache // roleID → granted permission strings, invalidated on grant edits
+	upstreams *upstreamSet
 	api       *apiClient    // the api service's internal RPC (channels #62, members #58); nil → those surfaces answer 503
 	opsWallet *walletClient // wallet internal RPC (ticket #60's custody/ops surface)
 }
@@ -34,8 +35,11 @@ func NewServer(pool *pgxpool.Pool, env *AdminEnv, log *slog.Logger) *Server {
 		log = slog.Default()
 	}
 	return &Server{
-		pool: pool, env: env, log: log,
+		pool:      pool,
+		env:       env,
+		log:       log,
 		grants:    grantCache{sets: map[string]grantSet{}},
+		upstreams: loadUpstreams(sharedUpstreamEnv(), log),
 		api:       newAPIClient(env),
 		opsWallet: newWalletClient(env.WalletBaseURL, env.WalletTimeout),
 	}

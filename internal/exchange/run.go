@@ -29,10 +29,14 @@ func Run(ctx context.Context, d service.Deps) error {
 	}
 	defer consumer.Close()
 
-	d.Internal.HandleFunc("GET /engine/status", func(w http.ResponseWriter, _ *http.Request) {
+	d.Internal.HandleFunc("GET /engine/status", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true, "markets": eng.Status(), "at": time.Now().UTC()})
+		_ = json.NewEncoder(w).Encode(StatusWithLag(r.Context(), eng, consumer))
 	})
+	// The Market-config admin seam (ticket #61): the markets table's
+	// only writer. The freeze guard and the 5s live-apply stay the
+	// engine's; this RPC just edits the row.
+	RegisterAdminRPC(d.Internal, &AdminRPC{DB: d.Pool, Log: d.Log})
 
 	errCh := make(chan error, 3)
 	go func() { errCh <- ConsumeCommandTopic(ctx, eng, consumer) }()

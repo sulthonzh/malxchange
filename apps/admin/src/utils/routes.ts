@@ -30,9 +30,10 @@ export interface AdminSection {
 // Employee and Role management, super-admin's alone in the ADR-0012
 // matrix. Members (#58, support's view/lock) and the Compliance KYC
 // queue landed with their registry entries, as did the Code channels'
-// Config section (#62); the Content section is #63 (support's
-// announcements and help center — categories and articles, publish
-// via the edit form's switch). Finance and Audit grow with #59-#61.
+// Config section (#62), the Content section (#63 — support's
+// announcements and help center, publish via the edit form's switch),
+// and the Config editors + engine status (#61). Finance and Audit
+// grow with #59.
 export const adminSections: AdminSection[] = [
   {
     title: 'Members',
@@ -74,7 +75,20 @@ export const adminSections: AdminSection[] = [
     // Super-admin's alone in the matrix; email is always on and has no
     // entry here.
     title: 'Config',
-    routes: [{ path: '/config/channels', title: 'Code channels', permission: 'view:channel' }],
+    routes: [
+      { path: '/config/coins', title: 'Coins', permission: 'view:coin' },
+      { path: '/config/markets', title: 'Markets', permission: 'view:market' },
+      // Code channels (#62): status list, activation with per-driver
+      // credentials (Step-up on the save), deactivation. Super-admin's
+      // alone; email is always on and has no entry here.
+      { path: '/config/channels', title: 'Code channels', permission: 'view:channel' },
+    ],
+  },
+  {
+    title: 'Ops',
+    routes: [
+      { path: '/ops/engine', title: 'Engine status', permission: 'view:engine' },
+    ],
   },
 ]
 

@@ -25,6 +25,16 @@ const (
 	PermEditRole              = "edit:role"               // POST   /api/roles/{id}/grants
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
 
+	// Config surfaces (ticket #61): the Coin editor fronts the wallet's
+	// Coin config RPC, the Market editor the exchange's Market-config
+	// RPC; engine status is the all-Roles read view. ADR-0012 matrix:
+	// config edits are super-admin's; the engine status page is the
+	// one surface every Role sees.
+	PermViewCoin   = "view:coin"   // GET /api/coins
+	PermEditCoin   = "edit:coin"   // PUT /api/coins/{name}
+	PermViewMarket = "view:market" // GET /api/markets
+	PermEditMarket = "edit:market" // PUT /api/markets/{symbol}
+	PermViewEngine = "view:engine" // GET /api/engine
 	// Wallet Ops (ticket #60): the custody + operations surface over
 	// wallet's internal RPCs (ADR-0008). Finance + super-admin per the
 	// ADR-0012 matrix; Step-up where the matrix demands it (hot→cold
@@ -105,6 +115,18 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/roles", Perm: PermViewRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListRoles},
 	{Method: http.MethodPost, Path: "/api/roles/{id}/grants", Perm: PermEditRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleEditRoleGrants},
 	{Method: http.MethodDelete, Path: "/api/roles/{id}", Perm: PermDeleteRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeleteRole},
+	// Config editors (ticket #61): super-admin's alone per the
+	// ADR-0012 matrix; both edits are audited by construction, with
+	// the upstream's before/after row JSON in the envelope.
+	{Method: http.MethodGet, Path: "/api/coins", Perm: PermViewCoin, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListCoins},
+	{Method: http.MethodPut, Path: "/api/coins/{name}", Perm: PermEditCoin, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleUpdateCoin},
+	{Method: http.MethodGet, Path: "/api/markets", Perm: PermViewMarket, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListMarkets},
+	// Symbols carry a slash ("BTC/USDT"), so the edit route is
+	// multi-segment; PathValue joins it back to the symbol.
+	{Method: http.MethodPut, Path: "/api/markets/{symbol...}", Perm: PermEditMarket, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleUpdateMarket},
+	// The engine status page is the one surface every Role sees
+	// (ADR-0012 matrix: read-side incl. engine status for all four).
+	{Method: http.MethodGet, Path: "/api/engine", Perm: PermViewEngine, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance, RoleSupport}, Handler: (*Server).handleEngineStatus},
 
 	// Wallet Ops (ticket #60): finance + super-admin. Mutating entries
 	// are audit-logged by construction with action == permission; the

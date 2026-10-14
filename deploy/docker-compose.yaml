@@ -236,11 +236,16 @@ services:
       MAL_ADMIN_SESSION_ABSOLUTE: ${MAL_ADMIN_SESSION_ABSOLUTE:-12h}
       MAL_ADMIN_SESSION_IDLE: ${MAL_ADMIN_SESSION_IDLE:-30m}
       MAL_ADMIN_LOCKOUT_WINDOW: ${MAL_ADMIN_LOCKOUT_WINDOW:-15m}
-      # Wallet Ops upstream (issue #60): wallet's internal RPC for the
-      # custody/ops surface — summary, incidents, sweeps, hot/cold
-      # transfers, reconcile
+      # Config editors (issue #61): wallet Coin config + exchange
+      # Market-config/engine-status internal RPCs
       MAL_ADMIN_WALLET_BASE_URL: ${MAL_ADMIN_WALLET_BASE_URL:-http://wallet:8080/internal}
       MAL_ADMIN_WALLET_TIMEOUT: ${MAL_ADMIN_WALLET_TIMEOUT:-5s}
+      MAL_ADMIN_EXCHANGE_BASE_URL: ${MAL_ADMIN_EXCHANGE_BASE_URL:-http://exchange:8080/internal}
+      MAL_ADMIN_EXCHANGE_TIMEOUT: ${MAL_ADMIN_EXCHANGE_TIMEOUT:-5s}
+      # Wallet Ops upstream (issue #60): wallet's internal RPC for the
+      # custody/ops surface — summary, incidents, sweeps, hot/cold
+      # transfers, reconcile. The URL/timeout are shared with #61's
+      # Coin editor (declared above) — single source, one line.
       # api's internal RPC (issues #58/#62): the member/KYC surfaces and
       # the Code channel surface all proxy it.
       MAL_ADMIN_API_BASE_URL: ${MAL_ADMIN_API_BASE_URL:-http://api:8080/internal}

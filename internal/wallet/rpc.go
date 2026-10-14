@@ -60,6 +60,9 @@ func RegisterRPC(mux *http.ServeMux, r *RPC) {
 	mux.HandleFunc("POST /coins/{name}/sweep-pause", r.sweepPause)
 	mux.HandleFunc("GET /hot-transfers", r.listHotTransfers)
 	mux.HandleFunc("POST /hot-transfers", r.hotTransfer)
+	// The retry (ticket #60): RetryHotTransfer existed but had no route
+	// — failed hot→cold transfers were stuck until this seam.
+	mux.HandleFunc("POST /hot-transfers/{id}/retry", r.hotTransferRetry)
 	mux.HandleFunc("GET /cold-transfers", r.listColdTransfers)
 	mux.HandleFunc("POST /cold-transfers", r.coldTransfer)
 	mux.HandleFunc("POST /adjustments", r.adjustment)
@@ -423,6 +426,16 @@ func (r *RPC) hotTransfer(w http.ResponseWriter, req *http.Request) {
 	writeJSON(w, map[string]string{"id": h.ID, "coin": h.Coin, "state": h.State})
 }
 
+// hotTransferRetry re-arms a failed hot→cold transfer (ticket #60):
+// the signing/executor path picks it up again from pending.
+func (r *RPC) hotTransferRetry(w http.ResponseWriter, req *http.Request) {
+	if err := RetryHotTransfer(req.Context(), r.DB, req.PathValue("id")); err != nil {
+		writeErr(w, err)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 func (r *RPC) listHotTransfers(w http.ResponseWriter, req *http.Request) {
 	list, err := ListHotTransfers(req.Context(), r.DB, req.URL.Query().Get("coin"))
 	if err != nil {
@@ -509,14 +522,14 @@ func (r *RPC) listIncidents(w http.ResponseWriter, req *http.Request) {
 	out := []map[string]any{}
 	for rows.Next() {
 		var id, coin, kind, detail, status string
-		var created []byte
+		var created time.Time
 		if err := rows.Scan(&id, &coin, &kind, &detail, &status, &created); err != nil {
 			writeErr(w, err)
 			return
 		}
 		out = append(out, map[string]any{
 			"id": id, "coin": coin, "kind": kind, "detail": detail,
-			"status": status, "createdAt": string(created),
+			"status": status, "createdAt": created.UTC().Format(PgTimestampText),
 		})
 	}
 	writeJSON(w, out)

@@ -21,6 +21,9 @@ describe('visibleRoutes', () => {
       'view:role',
       'edit:role',
       'delete:role',
+      'view:channel',
+      'activate:channel',
+      'deactivate:channel',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })

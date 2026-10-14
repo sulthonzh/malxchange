@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/shopspring/decimal"
 
 	"github.com/syaikhipin/malxchange/internal/money"
@@ -245,7 +246,9 @@ func loadWithdrawalTx(ctx context.Context, tx pgx.Tx, id string) (Withdrawal, er
 	return w, err
 }
 
-// ListWithdrawals filters records (member or admin surface).
+// WithdrawalView is the admin wire shape of one withdrawal (the list
+// row; detail adds updatedAt). Money values are decimal strings at the
+// Coin's scale, timestamps Postgres text.
 type WithdrawalView struct {
 	ID        string `json:"id"`
 	Coin      string `json:"coin"`
@@ -258,8 +261,39 @@ type WithdrawalView struct {
 	TxID      string `json:"txid,omitempty"`
 	Error     string `json:"error,omitempty"`
 	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt,omitempty"` // detail only
 }
 
+// errMalformedID marks an id that cannot resolve (e.g. not a UUID for
+// a UUID-keyed table) — Postgres' invalid_input_syntax class.
+var errMalformedID = errors.New("wallet: malformed id")
+
+// LoadWithdrawalDetail fetches one record in the detail shape — the
+// list row plus updatedAt (spec #59: the audit queue drills into one
+// withdrawal). pgx.ErrNoRows and errMalformedID pass through for the
+// caller's 404.
+func LoadWithdrawalDetail(ctx context.Context, db DB, id string) (WithdrawalView, error) {
+	var v WithdrawalView
+	var created, updated time.Time
+	err := db.QueryRow(ctx, `
+		SELECT id, coin, member_id, address, amount, fee, net, state,
+		       COALESCE(txid,''), COALESCE(error,''), created_at, updated_at
+		FROM withdrawals WHERE id = $1`, id).
+		Scan(&v.ID, &v.Coin, &v.Member, &v.Address, &v.Amount, &v.Fee, &v.Net,
+			&v.State, &v.TxID, &v.Error, &created, &updated)
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "22P02" {
+			return WithdrawalView{}, fmt.Errorf("%w: %s", errMalformedID, id)
+		}
+		return WithdrawalView{}, err
+	}
+	v.CreatedAt = created.UTC().Format(PgTimestampText)
+	v.UpdatedAt = updated.UTC().Format(PgTimestampText)
+	return v, nil
+}
+
+// ListWithdrawals filters records (member or admin surface).
 func ListWithdrawals(ctx context.Context, db DB, member, state string, limit int) ([]WithdrawalView, error) {
 	if limit <= 0 || limit > 500 {
 		limit = 100

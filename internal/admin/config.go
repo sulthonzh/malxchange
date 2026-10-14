@@ -37,7 +37,7 @@ type AdminEnv struct {
 	SessionIdle      time.Duration // inactivity window, slid on every authenticated use (ADR-0012: 30 min)
 	LockoutThreshold int           // failed logins inside LockoutWindow before the email locks
 	LockoutWindow    time.Duration // failures older than this stop counting; the lock lifts with them
-	WalletBaseURL    string        // wallet internal-RPC origin (ticket #60; default http://wallet:8080/internal)
+	WalletBaseURL    string        // the wallet's internal RPC origin (compose network — never proxied; default http://wallet:8080/internal)
 	WalletTimeout    time.Duration // one proxied wallet call's budget (default 5s)
 	APIBaseURL       string        // api's internal-RPC origin (prefix-free paths append; default http://api:8080/internal)
 	APITimeout       time.Duration // one proxied api call's budget (default 5s)

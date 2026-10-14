@@ -86,6 +86,20 @@ const (
 	PermViewChannel       = "view:channel"       // GET    /api/channels
 	PermActivateChannel   = "activate:channel"   // POST   /api/channels/{name}/activate (Step-up)
 	PermDeactivateChannel = "deactivate:channel" // POST   /api/channels/{name}/deactivate
+	// Finance funds surface (#59): the withdrawal audit queue and the
+	// manual balance adjustment. Read side is finance + super-admin
+	// (read-side everything, ADR-0012); the money-moving decisions are
+	// finance's alone — separation of duties is the point of the
+	// matrix. Step-up: approve and retry (withdrawal approval /
+	// failed-broadcast retry in ADR-0012's step-up list), and the
+	// balance adjustment.
+	PermListWithdrawal    = "list:withdrawal"    // GET  /api/withdrawals
+	PermViewWithdrawal    = "view:withdrawal"    // GET  /api/withdrawals/{id}
+	PermApproveWithdrawal = "approve:withdrawal" // POST /api/withdrawals/{id}/approve (Step-up)
+	PermRejectWithdrawal  = "reject:withdrawal"  // POST /api/withdrawals/{id}/reject
+	PermRetryWithdrawal   = "retry:withdrawal"   // POST /api/withdrawals/{id}/retry (Step-up)
+	PermRefundWithdrawal  = "refund:withdrawal"  // POST /api/withdrawals/{id}/refund
+	PermAdjustBalance     = "adjust:balance"     // POST /api/adjustments (Step-up)
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -178,6 +192,15 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/channels", Perm: PermViewChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListChannels},
 	{Method: http.MethodPost, Path: "/api/channels/{name}/activate", Perm: PermActivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleActivateChannel},
 	{Method: http.MethodPost, Path: "/api/channels/{name}/deactivate", Perm: PermDeactivateChannel, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeactivateChannel},
+	// Finance funds surface (#59): withdrawal audit queue + manual
+	// balance adjustment (comment on the permission strings).
+	{Method: http.MethodGet, Path: "/api/withdrawals", Perm: PermListWithdrawal, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleListWithdrawals},
+	{Method: http.MethodGet, Path: "/api/withdrawals/{id}", Perm: PermViewWithdrawal, Matrix: []string{RoleFinance, RoleSuperAdmin}, Handler: (*Server).handleWithdrawalDetail},
+	{Method: http.MethodPost, Path: "/api/withdrawals/{id}/approve", Perm: PermApproveWithdrawal, Matrix: []string{RoleFinance}, Handler: (*Server).handleApproveWithdrawal},
+	{Method: http.MethodPost, Path: "/api/withdrawals/{id}/reject", Perm: PermRejectWithdrawal, Matrix: []string{RoleFinance}, Handler: (*Server).handleRejectWithdrawal},
+	{Method: http.MethodPost, Path: "/api/withdrawals/{id}/retry", Perm: PermRetryWithdrawal, Matrix: []string{RoleFinance}, Handler: (*Server).handleRetryWithdrawal},
+	{Method: http.MethodPost, Path: "/api/withdrawals/{id}/refund", Perm: PermRefundWithdrawal, Matrix: []string{RoleFinance}, Handler: (*Server).handleRefundWithdrawal},
+	{Method: http.MethodPost, Path: "/api/adjustments", Perm: PermAdjustBalance, Matrix: []string{RoleFinance}, Handler: (*Server).handleAdjustment},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

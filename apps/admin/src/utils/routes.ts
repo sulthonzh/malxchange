@@ -90,6 +90,18 @@ export const adminSections: AdminSection[] = [
       { path: '/ops/engine', title: 'Engine status', permission: 'view:engine' },
     ],
   },
+  {
+    // Finance funds surface (#59): the withdrawal audit queue and the
+    // manual balance adjustment. Read side carries super-admin's
+    // read-side grant; the adjustment is finance's write alone — the
+    // sidebar mirrors the login response's permission set, the server
+    // enforces the same strings.
+    title: 'Finance',
+    routes: [
+      { path: '/finance/withdrawals', title: 'Withdrawals', permission: 'view:withdrawal' },
+      { path: '/finance/adjustments', title: 'Adjustments', permission: 'adjust:balance' },
+    ],
+  },
 ]
 
 /** Sections whose entries the permission set admits; emptied sections drop. */

@@ -88,6 +88,19 @@ tripwires like `trades == fills`), with a one-line comment saying so.
 against the spec's "observable through endpoints" testing decision;
 caught only at slice-end review.)
 
+## Route-404 assertions wait out boot time
+
+A test that boots a service's production `Run` behind the harness mux
+fails on an unmounted-route 404 only after the service has had boot
+time: `Run` registers its RPCs after recovery and connection dials, so
+the first poll of a cold run can see the mux still empty and fail on
+correctly wired code. Gate the 404 on a grace window (or on a route
+`Run` registers earlier) before treating it as the symptom — the red
+tree must still fail fast, just not faster than boot.
+(Symptom: the green tree failing `GET /internal/orders/current = 404 —
+Run did not mount the member-order RPC` on a cold first poll — ticket
+#65's first draft, caught in review before it flaked CI.)
+
 ## Fatal exit paths log their cause before returning
 
 A worker whose error propagates to boot-shutdown must log it first:

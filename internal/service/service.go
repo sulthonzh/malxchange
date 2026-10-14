@@ -31,6 +31,9 @@ import (
 )
 
 // Deps are the live connections a service's Extra function builds on.
+// To boot a full Extra in an integration test — the production Run
+// against an in-process broker and a throwaway database, muxes in this
+// shape — see internal/exchange/run_wiring_it_test.go.
 type Deps struct {
 	Cfg      config.Config
 	Pool     *pgxpool.Pool

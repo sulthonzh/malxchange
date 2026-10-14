@@ -36,11 +36,14 @@ func (s *Server) roleByID(ctx context.Context, id string) (Role, error) {
 }
 
 // roleView is the wire shape of GET /api/roles: the Role plus its
-// granted permission strings — the editor's matrix column.
+// granted permission strings — the editor's matrix column — and the
+// in-use flag the UI shows alongside `system` to mark a Role as
+// undeletable (ADR-0012: seeded and held Roles refuse deletion).
 type roleView struct {
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	System      bool     `json:"system"`
+	InUse       bool     `json:"in_use"`
 	Permissions []string `json:"permissions"`
 }
 
@@ -48,6 +51,7 @@ type roleView struct {
 func (s *Server) handleListRoles(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.pool.Query(r.Context(),
 		`SELECT ro.id, ro.name, ro.system,
+		        EXISTS (SELECT 1 FROM employees e WHERE e.role_id = ro.id),
 		        COALESCE(array_agg(p.name ORDER BY p.name) FILTER (WHERE p.name IS NOT NULL), '{}')
 		   FROM roles ro
 		   LEFT JOIN role_permissions rp ON rp.role_id = ro.id
@@ -62,7 +66,7 @@ func (s *Server) handleListRoles(w http.ResponseWriter, r *http.Request) {
 	out := []roleView{}
 	for rows.Next() {
 		var v roleView
-		if err := rows.Scan(&v.ID, &v.Name, &v.System, &v.Permissions); err != nil {
+		if err := rows.Scan(&v.ID, &v.Name, &v.System, &v.InUse, &v.Permissions); err != nil {
 			writeErr(w, s.log, err)
 			return
 		}

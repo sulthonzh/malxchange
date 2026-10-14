@@ -198,3 +198,115 @@ test('unknown routes answer the 404 page', async ({ page }) => {
   expect(response?.status()).toBe(404)
   await expect(page.getByText('The page you are looking for does not exist.')).toBeVisible()
 })
+
+// ---- issue #57: Employee management, the grant editor, audit search ----
+
+/** The super-admin column's index in the grant editor (roles arrive name-sorted). */
+async function superAdminColumnIndex(page: Page): Promise<number> {
+  const headers = page.locator('.editor-table thead th')
+  const count = await headers.count()
+  for (let i = 0; i < count; i += 1) {
+    if ((await headers.nth(i).innerText()).trim() === 'super-admin') {
+      return i
+    }
+  }
+  throw new Error('no super-admin column in the grant editor')
+}
+
+test('employee management from the UI: create with Step-up, reset password, disable', async ({ page }) => {
+  const root = readAdminState()
+  test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await loginThroughUi(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+  await page.goto('/system/employees')
+  await expect(page.locator('h1')).toHaveText('Employees')
+
+  // The guards are inert client-side: self-disable and the sole
+  // super-admin's own row refuse before any request.
+  const selfRow = page.locator('.employees-table tbody tr', { hasText: root!.email })
+  await expect(selfRow.locator('button:has-text("Disable")')).toBeDisabled()
+  await expect(selfRow.locator('button:has-text("Change role")')).toBeDisabled()
+
+  // Create behind the Step-up prompt: an empty code is refused with a
+  // visible sentence before anything is sent.
+  const email = `ui-staff-${suffix()}@exchange.example.com`
+  await page.click('button:has-text("Create Employee")')
+  await page.fill('.el-dialog input[name="email"]', email)
+  await page.fill('.el-dialog input[name="password"]', 'E2e-one-time-1')
+  await page.click('.el-dialog .el-select__wrapper')
+  await page.click('.el-select-dropdown__item:has-text("finance")')
+  await page.click('.el-dialog button:has-text("Create")')
+  await expect(page.locator('.el-dialog .dialog-error')).toContainText(
+    'Enter a fresh authenticator code.',
+  )
+  await page.fill('.el-dialog input[name="code"]', await totpCode(root!.totpSecret))
+  await page.click('.el-dialog button:has-text("Create")')
+  const row = page.locator('.employees-table tbody tr', { hasText: email })
+  await expect(row).toBeVisible()
+
+  // Reset password (Step-up): the generated one-time credential shows once.
+  await row.locator('button:has-text("Reset password")').click()
+  await page.fill('.el-dialog input[name="code"]', await totpCode(root!.totpSecret))
+  await page.click('.el-dialog button:has-text("Reset")')
+  await expect(page.locator('.one-time-result')).toBeVisible()
+  await page.click('.el-dialog button:has-text("Close")')
+
+  // Disable the new Employee; the server's refusal for a guarded row
+  // would render in the page alert (the self row above never sends).
+  await row.locator('button:has-text("Disable")').click()
+  await expect(row).toContainText('Disabled')
+
+  // The audit log renders the trail with before/after JSON.
+  await page.goto('/audit/log')
+  await expect(page.locator('.audit-table tbody tr').first()).toBeVisible()
+  await page.fill('input[name="action"]', 'create:employee')
+  await page.click('button:has-text("Search")')
+  const createRow = page.locator('.audit-table tbody tr', { hasText: email })
+  await expect(createRow).toBeVisible()
+  await expect(createRow.locator('.after-json')).toContainText(email)
+  await expect(createRow.locator('.before-json')).toContainText('—')
+})
+
+test('grant editor: a revoked grant bites the live session on its next request', async ({ page }) => {
+  const root = readAdminState()
+  test.skip(!root?.totpSecret, 'needs the provisioned super-admin from the first journey')
+  await loginThroughUi(page, root!.email, root!.password, await totpCode(root!.totpSecret))
+  await page.goto('/system/employees')
+  await expect(page.locator('.employees-table')).toBeVisible()
+
+  // Toggle view:employee off the super-admin Role in the matrix; the
+  // switch persists immediately (one POST, no save step).
+  await page.goto('/system/roles')
+  const columnIndex = await superAdminColumnIndex(page)
+  const editorRow = page.locator('.editor-table tbody tr', { hasText: 'view:employee' })
+  const grantSwitch = editorRow.locator('td').nth(columnIndex).locator('.el-switch')
+  await expect(grantSwitch).toHaveClass(/is-checked/)
+  const [revokeResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/grants') && response.request().method() === 'POST'),
+    grantSwitch.click(),
+  ])
+  expect(revokeResponse.status()).toBe(200)
+  await expect(grantSwitch).not.toHaveClass(/is-checked/)
+
+  // The bite: the SAME live session's next request is refused, and the
+  // refusal renders as a visible error — never a silent empty table.
+  await page.goto('/system/employees')
+  await expect(page.locator('.action-error')).toContainText('You do not have permission to do that.')
+  const refused = await pageApi(page, '/api/employees')
+  expect(refused.status).toBe(403)
+
+  // Re-grant through the same switch; the next request goes through.
+  await page.goto('/system/roles')
+  const grantSwitchAgain = page
+    .locator('.editor-table tbody tr', { hasText: 'view:employee' })
+    .locator('td')
+    .nth(columnIndex)
+    .locator('.el-switch')
+  const [grantResponse] = await Promise.all([
+    page.waitForResponse((response) => response.url().includes('/grants') && response.request().method() === 'POST'),
+    grantSwitchAgain.click(),
+  ])
+  expect(grantResponse.status()).toBe(200)
+  await expect(grantSwitchAgain).toHaveClass(/is-checked/)
+  await page.goto('/system/employees')
+  await expect(page.locator('.employees-table')).toBeVisible()
+})

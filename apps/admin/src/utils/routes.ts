@@ -26,16 +26,21 @@ export interface AdminSection {
   routes: AdminRoute[]
 }
 
-// The System section exists today because its endpoints do (#54):
-// Employee and Role management, super-admin's alone in the ADR-0012
-// matrix. Sections for Members, Finance, Compliance, Content, Config,
-// and Audit grow with #57-#63.
+// The System section exists because its endpoints do (#54); the Audit
+// section arrives with #57's audit-log search. Sections for Members,
+// Finance, Compliance, Content, and Config grow with #58-#63.
 export const adminSections: AdminSection[] = [
   {
     title: 'System',
     routes: [
       { path: '/system/employees', title: 'Employees', permission: 'view:employee' },
       { path: '/system/roles', title: 'Roles', permission: 'view:role' },
+    ],
+  },
+  {
+    title: 'Audit',
+    routes: [
+      { path: '/audit/log', title: 'Audit log', permission: 'view:audit-log' },
     ],
   },
 ]

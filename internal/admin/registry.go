@@ -24,6 +24,8 @@ const (
 	PermViewRole              = "view:role"               // GET    /api/roles
 	PermEditRole              = "edit:role"               // POST   /api/roles/{id}/grants
 	PermDeleteRole            = "delete:role"             // DELETE /api/roles/{id}
+	PermViewPermission        = "view:permission"         // GET    /api/permissions (the read-only catalog)
+	PermViewAuditLog          = "view:audit-log"          // GET    /api/audit-log
 )
 
 // Endpoint is one registered admin endpoint. Handler is a method
@@ -53,6 +55,14 @@ var Endpoints = []Endpoint{
 	{Method: http.MethodGet, Path: "/api/roles", Perm: PermViewRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListRoles},
 	{Method: http.MethodPost, Path: "/api/roles/{id}/grants", Perm: PermEditRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleEditRoleGrants},
 	{Method: http.MethodDelete, Path: "/api/roles/{id}", Perm: PermDeleteRole, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleDeleteRole},
+	// The grant editor's catalog read (ticket #57): the row set the
+	// editor renders is exactly this table — display-only everywhere.
+	// Same audience as the Role surface it feeds.
+	{Method: http.MethodGet, Path: "/api/permissions", Perm: PermViewPermission, Matrix: []string{RoleSuperAdmin}, Handler: (*Server).handleListPermissions},
+	// Audit log search (ticket #57): ADR-0012 reads the log with
+	// super-admin/finance/compliance. A GET — searching writes nothing,
+	// so the audit middleware does not apply.
+	{Method: http.MethodGet, Path: "/api/audit-log", Perm: PermViewAuditLog, Matrix: []string{RoleSuperAdmin, RoleFinance, RoleCompliance}, Handler: (*Server).handleSearchAuditLog},
 }
 
 // registerAdminEndpoint mounts one registry entry behind the full

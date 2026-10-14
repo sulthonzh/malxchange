@@ -21,6 +21,8 @@ describe('visibleRoutes', () => {
       'view:role',
       'edit:role',
       'delete:role',
+      'view:permission',
+      'view:audit-log',
     ]
     expect(visibleRoutes(adminSections, permissions)).toEqual(adminSections)
   })
@@ -29,6 +31,13 @@ describe('visibleRoutes', () => {
     const sections = visibleRoutes(adminSections, ['view:employee'])
     expect(sections).toHaveLength(1)
     expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/system/employees'])
+  })
+
+  it('derives the Audit section from the audit-log read permission', () => {
+    const sections = visibleRoutes(adminSections, ['view:audit-log'])
+    expect(sections).toHaveLength(1)
+    expect(sections[0]?.title).toBe('Audit')
+    expect(sections[0]?.routes.map((r) => r.path)).toEqual(['/audit/log'])
   })
 
   it('renders nothing for a permission set outside the table', () => {

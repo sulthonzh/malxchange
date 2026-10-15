@@ -12,7 +12,7 @@ COMPOSE_TEST = $(COMPOSE) -f deploy/compose.test.yaml
 # they boot their own stack with whatever they seed).
 ENV_GUARD = @test -f deploy/.env || { echo "deploy/.env missing (worktree checkout?) — cp it from the primary checkout; a seeded one has random creds that won't match the running dev stack" >&2; exit 1; }
 
-.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e admin-e2e test-profile-up test-profile-down test-profile-probe it-db-leftovers lint build-images installer-check hooks
+.PHONY: help dev-up dev-down dev-env test test-integration test-chain-e2e member-e2e admin-e2e test-profile-up test-profile-down test-profile-probe it-db-leftovers lint lint-guard-test build-images installer-check hooks
 
 help:
 	@echo "dev-up            start postgres+redpanda (loopback ports) for local dev"
@@ -28,6 +28,7 @@ help:
 	@echo "test-profile-probe health-check the chain nodes of the test profile"
 	@echo "it-db-leftovers    audit dev Postgres for throwaway IT litter (read-only)"
 	@echo "lint              go vet + gofmt + env-doc drift + checks"
+	@echo "lint-guard-test   pin the fixed-name guard's verdicts (rejects fixed names, accepts mint forms)"
 	@echo "build-images      build all service images"
 	@echo "installer-check   syntax-check the installer"
 
@@ -158,6 +159,25 @@ lint:
 		echo "admin e2e memberCall paths carry /api — MEMBER_API already ends in it, so the request hits /api/api (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@if ! out=$$(cd deploy && docker compose -f docker-compose.yaml config -q 2>&1 && docker compose -f docker-compose.yaml -f compose.test.yaml config -q 2>&1); then \
 		echo "compose overlay invalid — a broken compose file blocks every make target that boots the stack:"; echo "$$out"; exit 1; fi
+
+# Ticket #67: pin the fixed-name guard's verdicts. The guard's failure
+# mode is silent permissiveness — a loosened exclusion keeps CI green
+# while the rule dies — so this target re-proves both directions
+# against the real `lint` pipeline (not a copied regex): the two
+# forbidden forms must trip it, each arm named, and the two accepted
+# mint forms must pass it. The scratch file is removed on every exit
+# (trap), so `git status` stays clean on pass and fail.
+lint-guard-test:
+	@scratch=internal/exchange/lint_guard_scratch_test.go; \
+	trap 'rm -f "$$scratch"' EXIT INT TERM; \
+	printf 'package exchange\n\nvar _ = "CREATE DATABASE malxchange_foo"\n\nvar _ = "malxchange_ite"\n' > "$$scratch"; \
+	out=$$($(MAKE) lint 2>&1); st=$$?; \
+	if [ $$st -eq 0 ]; then echo "lint-guard-test: guard went permissive — negative fixture did not trip 'make lint'"; exit 1; fi; \
+	echo "$$out" | grep -q 'CREATE DATABASE malxchange_foo' || { echo "lint-guard-test: CREATE/DROP-DATABASE arm no longer rejects fixed names"; exit 1; }; \
+	echo "$$out" | grep -q '"malxchange_ite"' || { echo "lint-guard-test: quoted-literal arm no longer rejects bare fixed names"; exit 1; }; \
+	printf 'package exchange\n\nimport "encoding/hex"\n\nfunc lintGuardMintProbe(variant string, suffix []byte) string {\n\ta := "malxchange_itx_" + hex.EncodeToString(suffix)\n\tb := "malxchange_it" + variant + "_" + hex.EncodeToString(suffix)\n\treturn a + b\n}\n' > "$$scratch"; \
+	if ! out=$$($(MAKE) lint 2>&1); then echo "lint-guard-test: accepted mint form trips the guard (over-fire):"; echo "$$out"; exit 1; fi; \
+	echo "lint-guard-test: guard rejects both fixed-name forms, accepts both mint forms"
 
 build-images:
 	cd deploy && docker compose -f docker-compose.yaml build

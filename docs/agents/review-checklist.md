@@ -163,3 +163,27 @@ file, which otherwise only surfaces when an e2e or installer target
 tries to boot the stack.
 (Symptom: a duplicated `MAL_ADMIN_WALLET_BASE_URL` from a union merge
 blocked `make admin-e2e` entirely.)
+
+## EVM value transfers always set To
+
+An EVM send carrying value must pass an explicit recipient: `To=nil`
+with empty data shapes a contract-creation tx that
+`eth_sendRawTransaction` accepts (no error) but anvil never mines —
+no receipt, no mempool entry, `getTransactionByHash=null` — and the
+failure surfaces far away as a receipt timeout. `To=nil` is legitimate
+only for contract deploys (non-empty initcode). Enforced by `make
+lint` (nil-To with a `big.` value). Prefer split helpers
+(`anvilSendValue` taking a non-pointer address, `anvilDeploy` for
+bytecode) so the type system makes the bad shape unrepresentable.
+(Symptom: the EVM deposit E2E's 1.234 ETH send accepted but never
+mined (#27).)
+
+## Human decimal amounts read as strings
+
+Human-readable amounts in tests and seeds use
+`decimal.RequireFromString("0.003")`: `decimal.New(3, -3)` inverts
+the exponent easily (`New(3, 15)` reads fine, means 3×10¹⁵) and the
+mistake passes review because the assertion message prints the
+*want* side correctly. Reserve `New` for computed scaling.
+(Symptom: `post-EnsureGas balance = 0.003, want >= 0.003` failing on
+equal values (#27).)

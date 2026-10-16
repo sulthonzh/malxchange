@@ -51,7 +51,16 @@ Each of these cost real debugging time; check them before theorising:
   volume (#36, rpc -26 at height 101). A fresh chain needs
   `docker volume rm malxchange_btcd_data malxchange_ltcd_data` between
   down and up — then probe `getblockcount` to confirm height 0.
-
+- **Isolated anvil for EVM diagnosis.** The service lives in
+  `deploy/compose.test.yaml` (`entrypoint: ["anvil"]` — the foundry
+  image entrypoint is `/bin/sh -c`, so a bare `docker run
+  ghcr.io/foundry-rs/foundry:latest --host ...` fails; pass
+  `--entrypoint anvil`). For a throwaway loop that leaves the shared
+  `:8545` node alone: `docker run -d --entrypoint anvil -p
+  127.0.0.1:8547:8545 ghcr.io/foundry-rs/foundry:latest --host
+  0.0.0.0 --port 8545`, then `MAL_TEST_EVM_URL=http://127.0.0.1:8547
+  go test -tags chain_e2e -run <Test> ./internal/wallet/chain/evm/`
+  (#27).
 ## Layout
 
 | Path | What |

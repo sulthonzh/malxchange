@@ -118,23 +118,6 @@ func waitReceipt(t *testing.T, cl *ethclient.Client, hash common.Hash) *types.Re
 }
 
 func TestE2EDepositScanAndSweep(t *testing.T) {
-	// Skipped: under investigation. The test's 1.234 ETH native-deposit
-	// send (anvil account 0) is accepted by eth_sendRawTransaction
-	// (sendErr=nil) but never appears in anvil's mempool or a block,
-	// deterministically, on a fresh anvil — while a hand-crafted
-	// identical transfer at the same nonce IS mined. So anvil is healthy
-	// and the fault is in the test/client path, not the chain. Root cause
-	// not yet isolated; automine-race and stale-mempool theories were both
-	// tested and disproven.
-	//
-	// EVM logic (ERC-20 transfer/balance/decimals, native transfer, gas
-	// pre-funding, deposit scan, signing/nonce/gas-price) is covered by
-	// the passing unit and integration suites; only this live-sweep E2E is
-	// unavailable until the send-path issue is root-caused.
-	//
-	// To re-enable: delete the t.Skip line below.
-	t.Skip("EVM sweep E2E: deposit tx accepted by anvil but never mined; cause under investigation. EVM logic covered by unit + integration tests.")
-
 	url := os.Getenv("MAL_TEST_EVM_URL")
 	if url == "" {
 		url = "http://127.0.0.1:8545"
@@ -174,7 +157,6 @@ func TestE2EDepositScanAndSweep(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_ = hotAddr
 
 	raw, err := ethclient.DialContext(ctx, url)
 	if err != nil {
@@ -211,11 +193,13 @@ func TestE2EDepositScanAndSweep(t *testing.T) {
 	sweepMint := anvilSend(t, raw, anvil0Key, &token, nil, sweepData)
 
 	// 3. native deposit of 1.234 ETH to the watch address
-	ethTx := anvilSend(t, raw, anvil0Key, nil, big.NewInt(1234000000000000000), nil)
+	watchTo := common.HexToAddress(watchAddr)
+	ethTx := anvilSend(t, raw, anvil0Key, &watchTo, big.NewInt(1234000000000000000), nil)
 	hNative := ethTx.BlockNumber.Int64()
 
 	// 4. fund the hot wallet so senders can pay gas
-	fund := anvilSend(t, raw, anvil0Key, nil, big.NewInt(5000000000000000000), nil)
+	hotTo := common.HexToAddress(hotAddr)
+	fund := anvilSend(t, raw, anvil0Key, &hotTo, big.NewInt(5000000000000000000), nil)
 	_ = fund
 
 	watch := map[string]string{watchAddr: watchAddr}
@@ -292,7 +276,7 @@ func TestE2EDepositScanAndSweep(t *testing.T) {
 	}
 	mine(t)
 	fb, err := c.HotBalance(ctx, freshAddr)
-	if err != nil || fb.Cmp(decimal.New(3, 15)) < 0 {
+	if err != nil || fb.Cmp(decimal.New(3, -3)) < 0 {
 		t.Errorf("post-EnsureGas balance = %s, %v; want >= 0.003", fb, err)
 	}
 

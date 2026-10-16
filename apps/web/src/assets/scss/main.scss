@@ -9,21 +9,22 @@
 // reads the same tokens without a build-time import chain.
 
 :root {
-  --body-bg: #0b1520;
-  --panel-bg: #192330;
-  --panel-header-bg: #27313e;
-  --panel-border: #27313e;
-  --site-header-bg: #172636;
-  --home-section-bg: #141e2c;
-  --home-tabs-bg: #1e2834;
-  --home-tabs-hover-bg: #222b38;
-  --text: #fff;
-  --text-secondary: #828ea1;
-  --text-muted: #61688a;
-  --accent: #f0a70a;
-  --accent-border: #ffa800;
-  --buy-green: #00b275;
-  --sell-red: #f15057;
+  --body-bg: #ffffff;
+  --panel-bg: #ffffff;
+  --panel-header-bg: #f8fafc;
+  --panel-border: #e2e8f0;
+  --site-header-bg: #ffffff;
+  --home-section-bg: #f8fafc;
+  --home-tabs-bg: #f1f5f9;
+  --home-tabs-hover-bg: #e2e8f0;
+  --text: #1e293b;
+  --text-secondary: #64748b;
+  --text-muted: #94a3b8;
+  --accent: #16a34a;
+  --accent-border: #16a34a;
+  --accent-hover: #15803d;
+  --buy-green: #16a34a;
+  --sell-red: #dc2626;
 
   // element-plus tables share the ported panel look (the legacy iView
   // table overrides from App.vue, translated to element-plus variables).
@@ -82,4 +83,42 @@ a {
   width: 100%;
   overflow: hidden;
   margin-top: -200px;
+}
+
+// Light theme: green primary buttons, clean typography
+:root {
+  --el-color-primary: #16a34a;
+  --el-color-primary-light-3: #4ade80;
+  --el-color-primary-light-5: #86efac;
+  --el-color-primary-light-7: #bbf7d0;
+  --el-color-primary-light-9: #f0fdf4;
+  --el-color-primary-dark-2: #15803d;
+}
+
+.el-button--primary {
+  background-color: #16a34a;
+  border-color: #16a34a;
+  font-weight: 600;
+  &:hover, &:focus {
+    background-color: #15803d;
+    border-color: #15803d;
+  }
+}
+
+// Clean typography scale
+h1 { font-size: 32px; font-weight: 700; line-height: 1.2; }
+h2 { font-size: 24px; font-weight: 600; line-height: 1.3; }
+h3 { font-size: 18px; font-weight: 600; line-height: 1.4; }
+
+// Header: white with subtle shadow
+.site-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+// Footer: light
+.site-footer {
+  background: #f8fafc !important;
+  border-top: 1px solid #e2e8f0;
 }

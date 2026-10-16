@@ -143,6 +143,13 @@ services:
     profiles: ["test"]
     ports:
       - "127.0.0.1:18080:8080"
+    # The admin channels journey points the sms driver's endpoint at
+    # http://host.docker.internal:<sink-port>/sms (a listener on the
+    # test runner's host). Linux-engine runners resolve that name only
+    # with this mapping; Docker Desktop and colima inject it already,
+    # so the entry is a no-op for them (#72).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
   mailsink:
     image: docker.io/axllent/mailpit:v1.21
     profiles: ["test"]

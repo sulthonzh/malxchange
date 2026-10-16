@@ -424,8 +424,9 @@ export interface SmsSink {
 }
 
 /** Starts the SMS sink on the host: the api container reaches it at
- * http://host.docker.internal:<port>/sms (Docker Desktop routes the
- * name to the host loopback), and the channel credentials point the
+ * http://host.docker.internal:<port>/sms (the name resolves to the
+ * bridge/VM gateway — host-gateway on Linux runners — or to the host
+ * loopback on Docker Desktop), and the channel credentials point the
  * sms driver at exactly that URL. */
 export function startSmsSink(): Promise<SmsSink> {
   const deliveries: SmsDelivery[] = []
@@ -453,7 +454,12 @@ export function startSmsSink(): Promise<SmsSink> {
     })
   })
   const { promise, resolve } = Promise.withResolvers<void>()
-  server.listen(0, '127.0.0.1', () => resolve())
+  // Listen on all interfaces: the api container reaches the sink via
+  // host.docker.internal, which is the bridge/VM gateway (or the host
+  // loopback on Docker Desktop) — a 127.0.0.1 bind is unreachable from
+  // the container on Linux-engine and colima runners, deterministically
+  // failing the channels journey's code send (#72).
+  server.listen(0, '0.0.0.0', () => resolve())
   return promise.then(() => {
     const address = server.address()
     if (address === null || typeof address === 'string') {

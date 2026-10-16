@@ -109,6 +109,10 @@ dev-down:
 test:
 	go test ./...
 
+# Scoped runs share the target's env plumbing: callers only vary the
+# scope (issue #68), e.g. `make test-integration PKG=./internal/exchange/`.
+PKG ?= ./internal/... ./cmd/breakglass
+
 # Integration tests talk to the dev infra over loopback; the superuser
 # credential comes from deploy/.env (same one the compose init uses).
 # The break-glass CLI's per-command suite (cmd/breakglass, issue #55)
@@ -120,7 +124,7 @@ test-integration:
 	MAL_TEST_PG_SUPERUSER_PASSWORD=$${MAL_PG_SUPERUSER_PASSWORD} \
 	MAL_TEST_KAFKA_SEEDS=127.0.0.1:9092 \
 	MAL_TEST_KAFKA_USER=$${MAL_KAFKA_USER} MAL_TEST_KAFKA_PASSWORD=$${MAL_KAFKA_PASSWORD} \
-	go test -count=1 -timeout 240s -tags integration -p 1 ./internal/... ./cmd/breakglass
+	go test -count=1 -timeout 240s -tags integration -p 1 $(PKG)
 
 test-profile-up: deploy/.env
 	$(COMPOSE_TEST) --profile test up -d --wait

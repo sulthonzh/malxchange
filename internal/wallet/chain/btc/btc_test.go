@@ -125,7 +125,7 @@ func TestBuildSignChangePath(t *testing.T) {
 	const funding = int64(100_000)
 	for _, family := range []string{keys.BTC, keys.LTC} {
 		acct := testAccount(t, family, netMain)
-		r, err := NewRPC(family, "http://127.0.0.1:1", "u", "p", false)
+		r, err := NewRPC(family, "http://127.0.0.1:1", "u", "p", false, netMain)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,7 +185,7 @@ func TestBuildSignChangePath(t *testing.T) {
 func TestBuildSignSubDustRemainderStaysFee(t *testing.T) {
 	const funding = int64(10_000)
 	acct := testAccount(t, keys.BTC, netMain)
-	r, _ := NewRPC(famBTC, "http://127.0.0.1:1", "u", "p", false)
+	r, _ := NewRPC(famBTC, "http://127.0.0.1:1", "u", "p", false, netMain)
 	fund := fundingTx(t, famBTC, netMain, acct, funding)
 	hot, err := acct.HotAddress()
 	if err != nil {
@@ -211,7 +211,7 @@ func TestBuildSignSubDustRemainderStaysFee(t *testing.T) {
 
 func TestBuildSignRejectsBadShapes(t *testing.T) {
 	acct := testAccount(t, keys.BTC, netMain)
-	r, _ := NewRPC(famBTC, "http://127.0.0.1:1", "u", "p", false)
+	r, _ := NewRPC(famBTC, "http://127.0.0.1:1", "u", "p", false, netMain)
 	fund := fundingTx(t, famBTC, netMain, acct, 10_000)
 	dest := mustAddr(t, famBTC, netMain, acct, 0)
 	in := []Utxo{{TxID: fund.TxHash().String(), Vout: 0, Satoshis: 10_000, Branch: 0, Idx: 0}}

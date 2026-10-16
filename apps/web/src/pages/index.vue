@@ -19,15 +19,15 @@
 
     <div class="banner-panel">
       <img class="banner-img" src="~/assets/images/bannerbg.png" alt="" />
-      <p class="slogan">Exchange The Best</p>
-      <p class="subslogan">Trade every listed Coin on one open Market.</p>
+      <p class="slogan">Trade crypto with confidence</p>
+      <p class="subslogan">Buy and sell Bitcoin, Litecoin, and more on one open exchange.</p>
     </div>
 
     <div class="agent-panel-wrapper">
       <div class="agent-panel">
         <div class="title">
           <div class="gettingstarted">Get started</div>
-          <div class="tips">Four steps to your first order.</div>
+          <div class="tips">Four steps to your first trade.</div>
         </div>
         <div class="agent-list">
           <NuxtLink v-for="step in steps" :key="step.title" :to="step.to" class="agent-item">
@@ -119,17 +119,15 @@
     </div>
 
     <div class="section brand">
-      <p class="title">About the exchange</p>
-      <p class="subtitle">Fair, open, and exact to the last digit.</p>
+      <p class="title">Why malxchange</p>
+      <p class="subtitle">Fair, transparent, and precise down to the last satoshi.</p>
       <div class="detail">
-        The matching engine records every price, amount, and fee as an exact
-        decimal, so what you submit is what you get and no balance is ever
-        rounded up for display.
+        Every price, amount, and fee is recorded as an exact decimal. What you
+        see is what you get — no hidden rounding, no surprises.
       </div>
       <div class="detail">
-        Members sign in with an email address and a per-device session, browse
-        every Market anonymously before signing up, and stay in control of
-        where their session stays valid.
+        Sign in with your email and browse every market before you even create
+        an account. Your funds, your session, your control.
       </div>
     </div>
 
@@ -227,25 +225,25 @@ const steps = [
     to: '/register',
     image: accountImg,
     title: 'Open an account',
-    tip: 'Sign up with your email address in a few minutes.',
+    tip: 'Create your account with just an email address.',
   },
   {
     to: '/help',
     image: depositImg,
     title: 'Fund your account',
-    tip: 'Request a deposit address for the Coin you want to trade.',
+    tip: 'Generate a deposit address for the coin you want to trade.',
   },
   {
     to: '/help',
     image: firstOrderImg,
     title: 'Place your first order',
-    tip: 'Buy or sell in any listed Market.',
+    tip: 'Place limit orders on any listed market.',
   },
   {
     to: '/help',
     image: recordsImg,
-    title: 'Follow your records',
-    tip: 'Review your balances, orders, and fills in one place.',
+    title: 'Track your activity',
+    tip: 'Monitor balances, orders, and trade history in one place.',
   },
 ] as const
 
@@ -253,22 +251,22 @@ const features = [
   {
     image: safeImg,
     title: 'Security',
-    text: 'Balances live in an audited Ledger, and every movement appends to a Journal you can review.',
+    text: 'Every balance change is journaled and auditable. Your funds are accounted for, always.',
   },
   {
     image: fastImg,
-    title: 'Always open',
-    text: 'Markets run around the clock, and every Fill reaches your order history as it happens.',
+    title: 'Trade 24/7',
+    text: 'Markets never close. Fills land in your order history the moment they happen.',
   },
   {
     image: globalImg,
-    title: 'Global exchange',
-    text: 'Trade every listed Coin with Members anywhere through one shared order Book.',
+    title: 'Open to everyone',
+    text: 'One shared order book. Trade with anyone, from anywhere.',
   },
   {
     image: chooseImg,
-    title: 'Careful listings',
-    text: 'Every Coin is reviewed before it is listed, so you trade known assets.',
+    title: 'Curated listings',
+    text: 'Every asset is reviewed before listing. Trade coins you can trust.',
   },
 ] as const
 
@@ -479,7 +477,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     position: absolute;
     top: 70px;
     width: 100%;
-    letter-spacing: 5px;
+    letter-spacing: 1px;
     text-shadow: 0 0 10px #000000;
     margin: 0;
   }
@@ -491,7 +489,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     position: absolute;
     top: 130px;
     width: 100%;
-    letter-spacing: 2px;
+    letter-spacing: 0.5px;
     margin: 0;
   }
 }
@@ -510,7 +508,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
       width: 220px;
       padding: 10px 0;
       border-right: 1px solid rgb(28, 44, 72);
-      letter-spacing: 3px;
+      letter-spacing: 0.5px;
 
       .gettingstarted {
         color: var(--text);
@@ -519,7 +517,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
       .tips {
         font-size: 10px;
         color: #869ec9;
-        letter-spacing: 2px;
+        letter-spacing: 0.5px;
         margin-top: 5px;
       }
     }
@@ -683,7 +681,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     font-size: 30px;
     text-align: center;
     width: 100%;
-    letter-spacing: 6px;
+    letter-spacing: 1px;
     margin: 0 0 10px;
   }
 
@@ -697,7 +695,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
 
   .detail {
     line-height: 40px;
-    letter-spacing: 2px;
+    letter-spacing: 0.5px;
     text-indent: 45px;
     font-size: 20px;
     margin-bottom: 20px;

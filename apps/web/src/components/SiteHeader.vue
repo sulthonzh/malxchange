@@ -21,7 +21,7 @@
         <div class="rr login-container">
           <template v-if="session.loggedIn.value">
             <div class="mymsg">
-              <NuxtLink to="/uc/safe">Member center</NuxtLink>
+              <NuxtLink to="/uc">Member center</NuxtLink>
             </div>
             <el-dropdown>
               <a class="member-trigger" href="javascript:void(0)">
@@ -74,7 +74,7 @@ import { ArrowDown, Menu, User } from '@element-plus/icons-vue'
 // Exchange, Announcements, and Help.
 const navItems = [
   { to: '/', label: 'Home' },
-  { to: '/exchange', label: 'Exchange' },
+  { to: '/exchange/btc_usdt', label: 'Exchange' },
   { to: '/notice', label: 'Announcements' },
   { to: '/help', label: 'Help' },
 ] as const

@@ -3,13 +3,13 @@
     <div class="footer_content">
       <div class="footer_left">
         <img src="~/assets/images/logo-bottom.png" alt="malxchange" />
-        <p>Trade every listed Coin on one open Market.</p>
+        <p>Buy and sell Bitcoin, Litecoin, and more on one open exchange.</p>
         <p>Copyright © 2026 malxchange. All rights reserved.</p>
       </div>
       <div class="footer_right">
         <ul>
           <li class="footer_title"><span>Exchange</span></li>
-          <li><NuxtLink to="/exchange/btc_usdt">Trade a Market</NuxtLink></li>
+          <li><NuxtLink to="/exchange/btc_usdt">Start trading</NuxtLink></li>
           <li><NuxtLink to="/help">How to place an order</NuxtLink></li>
           <li><NuxtLink to="/help">Coin guides</NuxtLink></li>
         </ul>

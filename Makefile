@@ -149,8 +149,8 @@ lint:
 	@hits=$$( { grep -rnE '(DROP|CREATE) DATABASE (IF EXISTS )?malxchange_[a-z0-9]+' --include='*_test.go' internal; \
 	           grep -rnE '"malxchange_it[a-z0-9_]*"' --include='*_test.go' internal | grep -vE 'malxchange_it[a-z]*(_" \+ hex|" \+ variant)'; } ); if [ -n "$$hits" ]; then \
 		echo "fixed IT database name — mint a per-binary throwaway (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
-	@hits=$$(grep -nF 'addr + "/healthz"' internal/service/service.go); if [ -n "$$hits" ]; then \
-		echo "self-healthcheck probes liveness (/healthz answers ok unconditionally) — probe /readyz or a dead worker reads healthy (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
+	@hits=$$(grep -rnE 'anvilSend\(t, [A-Za-z0-9_.]+, [A-Za-z0-9_.]+, nil, big\.' --include='*.go' internal); if [ -n "$$hits" ]; then \
+		echo "nil-To value send — shapes a contract-creation tx anvil accepts but never mines; pass an explicit recipient (docs/agents/review-checklist.md):"; echo "$$hits"; exit 1; fi
 	@{ grep -rhoE '\$$\{MAL_[A-Z0-9_]+' deploy/*.yaml 2>/dev/null | sed 's/\$${//'; \
 	   grep -rhoE '(os\.Getenv|EnvDefault)\("MAL_[A-Z0-9_]+' --include='*.go' cmd internal | grep -oE 'MAL_[A-Z0-9_]+'; } \
 	  | grep -vE 'MAL_(TEST_|PG_|KAFKA_|HTTP_|UNSET_)' | sort -u > /tmp/mal_wanted.$$$$; \

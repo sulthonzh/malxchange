@@ -95,7 +95,7 @@ jobs:
         run: |
           docker compose -f deploy/docker-compose.yaml exec -T redpanda \
             rpk topic list 2>&1 | grep -q "SASL is required"
-      - name: Chain E2E (broken seams are t.Skip'd in the test files)
+      - name: Chain E2E (ltcd seam still t.Skip'd in btc/e2e_test.go; EVM unskipped by #27)
         run: make test-chain-e2e
 
   admin-e2e:

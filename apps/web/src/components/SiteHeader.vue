@@ -179,25 +179,35 @@ async function logout(): Promise<void> {
 
         .login_register {
           float: left;
-          padding-right: 20px;
-          border-right: 1px solid #273c55;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding-right: 0;
+          border-right: none;
 
           #login {
-            color: var(--text-secondary);
-            margin-left: 0;
-            border-right: 1px solid #273c55;
+            color: #1e293b;
+            font-weight: 500;
+            padding: 8px 16px;
+            text-decoration: none;
 
             &:hover {
-              color: var(--text);
+              color: #0f172a;
             }
           }
 
           #register {
-            color: var(--accent);
-            margin-left: 0;
+            color: #fff;
+            background: #1e293b;
+            font-weight: 600;
+            padding: 10px 24px;
+            border-radius: 8px;
+            text-decoration: none;
+            transition: background 0.2s;
 
             &:hover {
-              color: var(--text);
+              background: #0f172a;
+              color: #fff;
             }
           }
         }

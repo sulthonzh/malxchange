@@ -20,9 +20,9 @@
   --text: #1e293b;
   --text-secondary: #64748b;
   --text-muted: #94a3b8;
-  --accent: #16a34a;
-  --accent-border: #16a34a;
-  --accent-hover: #15803d;
+  --accent: #1e293b;
+  --accent-border: #1e293b;
+  --accent-hover: #0f172a;
   --buy-green: #16a34a;
   --sell-red: #dc2626;
 
@@ -87,21 +87,21 @@ a {
 
 // Light theme: green primary buttons, clean typography
 :root {
-  --el-color-primary: #16a34a;
-  --el-color-primary-light-3: #4ade80;
-  --el-color-primary-light-5: #86efac;
-  --el-color-primary-light-7: #bbf7d0;
-  --el-color-primary-light-9: #f0fdf4;
-  --el-color-primary-dark-2: #15803d;
+  --el-color-primary: #1e293b;
+  --el-color-primary-light-3: #64748b;
+  --el-color-primary-light-5: #94a3b8;
+  --el-color-primary-light-7: #cbd5e1;
+  --el-color-primary-light-9: #f8fafc;
+  --el-color-primary-dark-2: #0f172a;
 }
 
 .el-button--primary {
-  background-color: #16a34a;
-  border-color: #16a34a;
+  background-color: #1e293b;
+  border-color: #1e293b;
   font-weight: 600;
   &:hover, &:focus {
-    background-color: #15803d;
-    border-color: #15803d;
+    background-color: #0f172a;
+    border-color: #0f172a;
   }
 }
 

@@ -17,79 +17,91 @@ defineProps<{ title: string }>()
 
 <style scoped lang="scss">
 .login_form {
-  background: var(--body-bg) url('~/assets/images/login_bg.png') no-repeat center center;
-  height: 760px;
-  position: relative;
-  overflow: hidden;
+  background: #f8fafc;
+  min-height: 600px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
 
   .login_right {
-    position: absolute;
-    left: 50%;
-    top: 50%;
-    width: 350px;
-    background: #17212e;
-    border-top: 4px solid var(--accent);
-    border-radius: 5px;
-    padding: 20px 30px;
-    transform: translate(-50%, -50%);
+    width: 400px;
+    max-width: 100%;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 40px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
   }
 }
 
 .auth-title {
-  color: var(--text);
-  font-size: 25px;
-  font-weight: normal;
+  color: #1e293b;
+  font-size: 28px;
+  font-weight: 700;
   text-align: center;
-  height: 70px;
-  line-height: 70px;
-  margin: 0;
+  margin: 0 0 8px;
 }
 
-// Underline-style form controls ported from the legacy pages: a bare
-// bottom border that lights up gold on focus, no box, no radius.
+.auth-subtitle {
+  color: #64748b;
+  font-size: 15px;
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+// Clean boxed inputs for light theme
 :deep(.el-form-item) {
-  margin-bottom: 22px;
+  margin-bottom: 20px;
 }
 
 :deep(.el-input__wrapper) {
-  background: transparent;
-  border-radius: 0;
-  box-shadow: 0 1px 0 0 var(--panel-border);
-  padding: 1px 0;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: none;
+  padding: 4px 12px;
+
+  &:hover {
+    border-color: #cbd5e1;
+  }
 
   &.is-focus {
-    box-shadow: 0 1px 0 0 var(--accent);
+    border-color: #1e293b;
+    box-shadow: 0 0 0 3px rgba(30, 41, 59, 0.1);
   }
 }
 
 :deep(.el-input__inner) {
-  color: var(--text);
-  font-size: 14px;
+  color: #1e293b;
+  font-size: 15px;
+  height: 40px;
 
   &::placeholder {
-    color: var(--text-muted);
+    color: #94a3b8;
   }
 }
 
 :deep(.el-form-item__error) {
-  color: var(--sell-red);
+  color: #dc2626;
 }
 
-// The gold full-width submit every legacy auth form used.
+// Black full-width submit button
 :deep(.auth-submit) {
   width: 100%;
-  height: 42px;
-  background-color: var(--accent);
-  border-color: var(--accent);
+  height: 48px;
+  background-color: #1e293b;
+  border-color: #1e293b;
   color: #fff;
-  font-size: 18px;
-  border-radius: 5px;
-  margin-top: 10px;
+  font-size: 16px;
+  font-weight: 600;
+  border-radius: 8px;
+  margin-top: 8px;
 
   &:hover,
   &:focus {
-    background-color: var(--accent-border);
-    border-color: var(--accent-border);
+    background-color: #0f172a;
+    border-color: #0f172a;
     color: #fff;
   }
 }

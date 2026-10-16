@@ -19,8 +19,8 @@
 
     <div class="banner-panel">
       <img class="banner-img" src="~/assets/images/bannerbg.png" alt="" />
-      <p class="slogan">Trade crypto with confidence</p>
-      <p class="subslogan">Buy and sell Bitcoin, Litecoin, and more on one open exchange.</p>
+      <p class="slogan">Your gateway to crypto trading</p>
+      <p class="subslogan">Simple, secure, and built for everyone — start trading in minutes.</p>
     </div>
 
     <div class="agent-panel-wrapper">
@@ -119,15 +119,16 @@
     </div>
 
     <div class="section brand">
-      <p class="title">Why malxchange</p>
-      <p class="subtitle">Fair, transparent, and precise down to the last satoshi.</p>
+      <p class="title">Built for traders</p>
+      <p class="subtitle">Simple, secure, and designed around you.</p>
       <div class="detail">
-        Every price, amount, and fee is recorded as an exact decimal. What you
-        see is what you get — no hidden rounding, no surprises.
+        malxchange gives you a clean, fast way to trade crypto. No clutter,
+        no confusing jargon — just the markets, your orders, and your
+        balances, all in one place.
       </div>
       <div class="detail">
-        Sign in with your email and browse every market before you even create
-        an account. Your funds, your session, your control.
+        Start in seconds with just an email. Browse live markets before you
+        sign up, deposit with a single click, and trade with confidence.
       </div>
     </div>
 

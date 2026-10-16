@@ -20,9 +20,6 @@
           show-password
         />
       </el-form-item>
-      <el-form-item prop="device">
-        <el-input v-model="form.device" name="device" placeholder="Device name" />
-      </el-form-item>
 
       <p class="forgot-link">
         <NuxtLink to="/findPwd">Forgot your password?</NuxtLink>

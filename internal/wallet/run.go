@@ -81,14 +81,14 @@ func buildSenders(ctx context.Context, env WalletEnv, log *slog.Logger) (*Sender
 	s := &Senders{UTXO: map[string]*btc.RPC{}, Acct: map[string]*keys.Account{}}
 	hotAddrs := map[string]string{}
 	if env.BtcRPCURL != "" {
-		r, err := btc.NewRPC(chain.BTC, env.BtcRPCURL, env.BtcRPCUser, env.BtcRPCPass, env.ChainTLSSkip)
+		r, err := btc.NewRPC(chain.BTC, env.BtcRPCURL, env.BtcRPCUser, env.BtcRPCPass, env.ChainTLSSkip, env.Net)
 		if err != nil {
 			return nil, nil, err
 		}
 		s.UTXO[chain.BTC] = r
 	}
 	if env.LtcRPCURL != "" {
-		r, err := btc.NewRPC(chain.LTC, env.LtcRPCURL, env.LtcRPCUser, env.LtcRPCPass, env.ChainTLSSkip)
+		r, err := btc.NewRPC(chain.LTC, env.LtcRPCURL, env.LtcRPCUser, env.LtcRPCPass, env.ChainTLSSkip, env.Net)
 		if err != nil {
 			return nil, nil, err
 		}

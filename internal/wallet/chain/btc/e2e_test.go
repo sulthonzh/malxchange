@@ -45,7 +45,7 @@ func envOr(key, def string) string {
 // simnet account (whose m/0/0 address is the coinbase key).
 func simnetClient(t *testing.T, family, url string) (*RPC, *keys.Account) {
 	t.Helper()
-	r, err := NewRPC(family, url, envOr("MAL_TEST_BTCD_USER", defUser), envOr("MAL_TEST_BTCD_PASS", defPass), true)
+	r, err := NewRPC(family, url, envOr("MAL_TEST_BTCD_USER", defUser), envOr("MAL_TEST_BTCD_PASS", defPass), true, netSim)
 	if err != nil {
 		t.Fatal(err)
 	}

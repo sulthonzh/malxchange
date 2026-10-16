@@ -100,18 +100,30 @@ type RPC struct {
 	pass   string
 	http   *http.Client
 
-	// net is the network the node reports ("mainnet"/"simnet"),
-	// resolved lazily because NewRPC deliberately does no I/O; the
-	// HRP and base58 version bytes for address decoding depend on it.
+	// netHint is the operator-configured network ("mainnet"/"simnet",
+	// from MAL_WALLET_NET). resolveNet uses it as the default; a
+	// reachable node's getblockchaininfo can still confirm or override
+	// it. Without the hint, a node that errors on getblockchaininfo
+	// (e.g. ltcd's versionbits bug) would silently poison address
+	// decoding with mainnet forms, and deposits would never match.
+	netHint string
+
+	// net is the resolved network, pinned lazily because NewRPC
+	// deliberately does no I/O; the HRP and base58 version bytes for
+	// address decoding depend on it.
 	netOnce sync.Once
 	net     string
 }
 
 // NewRPC builds a client for family ("btc"|"ltc"). tlsSkipVerify
-// accepts the simnet nodes' self-signed certificates.
-func NewRPC(family, url, user, pass string, tlsSkipVerify bool) (*RPC, error) {
+// accepts the simnet nodes' self-signed certificates. netHint is the
+// operator-configured network; anything but "simnet" means mainnet.
+func NewRPC(family, url, user, pass string, tlsSkipVerify bool, netHint string) (*RPC, error) {
 	if family != famBTC && family != famLTC {
 		return nil, fmt.Errorf("%w: %s", ErrBadFamily, family)
+	}
+	if netHint != netSim {
+		netHint = netMain
 	}
 	transport := &http.Transport{}
 	if tlsSkipVerify {
@@ -119,11 +131,12 @@ func NewRPC(family, url, user, pass string, tlsSkipVerify bool) (*RPC, error) {
 		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
 	}
 	return &RPC{
-		family: family,
-		url:    url,
-		user:   user,
-		pass:   pass,
-		http:   &http.Client{Transport: transport, Timeout: 30 * time.Second},
+		family:  family,
+		url:     url,
+		user:    user,
+		pass:    pass,
+		netHint: netHint,
+		http:    &http.Client{Transport: transport, Timeout: 30 * time.Second},
 	}, nil
 }
 
@@ -183,14 +196,15 @@ func truncate(b []byte) string {
 	return string(b)
 }
 
-// resolveNet pins the network once via getblockchaininfo. An
-// unreachable node keeps the mainnet default: whichever RPC call
-// actually needs the node surfaces the connectivity error itself,
-// and BuildSign (which makes no node calls) works fully offline
-// against mainnet address forms.
+// resolveNet pins the network once. The operator-configured hint is
+// the default; a reachable node's getblockchaininfo confirms or
+// overrides it. A node that errors on getblockchaininfo (ltcd's
+// versionbits bug returns -32603) keeps the hint instead of silently
+// falling back to mainnet address forms — the silent fallback made
+// simnet deposits undetectable.
 func (r *RPC) resolveNet(ctx context.Context) (string, error) {
 	r.netOnce.Do(func() {
-		r.net = netMain
+		r.net = r.netHint
 		var info struct {
 			Chain string `json:"chain"`
 		}
@@ -199,6 +213,8 @@ func (r *RPC) resolveNet(ctx context.Context) (string, error) {
 		}
 		if info.Chain == "simnet" || info.Chain == "regtest" {
 			r.net = netSim
+		} else if info.Chain != "" {
+			r.net = netMain
 		}
 	})
 	return r.net, nil

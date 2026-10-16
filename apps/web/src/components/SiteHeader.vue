@@ -21,7 +21,7 @@
         <div class="rr login-container">
           <template v-if="session.loggedIn.value">
             <div class="mymsg">
-              <NuxtLink to="/uc/safe">Member center</NuxtLink>
+              <NuxtLink to="/uc">Member center</NuxtLink>
             </div>
             <el-dropdown>
               <a class="member-trigger" href="javascript:void(0)">

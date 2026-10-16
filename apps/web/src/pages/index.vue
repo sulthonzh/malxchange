@@ -479,7 +479,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     position: absolute;
     top: 70px;
     width: 100%;
-    letter-spacing: 5px;
+    letter-spacing: 1px;
     text-shadow: 0 0 10px #000000;
     margin: 0;
   }
@@ -491,7 +491,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     position: absolute;
     top: 130px;
     width: 100%;
-    letter-spacing: 2px;
+    letter-spacing: 0.5px;
     margin: 0;
   }
 }
@@ -510,7 +510,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
       width: 220px;
       padding: 10px 0;
       border-right: 1px solid rgb(28, 44, 72);
-      letter-spacing: 3px;
+      letter-spacing: 0.5px;
 
       .gettingstarted {
         color: var(--text);
@@ -519,7 +519,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
       .tips {
         font-size: 10px;
         color: #869ec9;
-        letter-spacing: 2px;
+        letter-spacing: 0.5px;
         margin-top: 5px;
       }
     }
@@ -683,7 +683,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
     font-size: 30px;
     text-align: center;
     width: 100%;
-    letter-spacing: 6px;
+    letter-spacing: 1px;
     margin: 0 0 10px;
   }
 
@@ -697,7 +697,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
 
   .detail {
     line-height: 40px;
-    letter-spacing: 2px;
+    letter-spacing: 0.5px;
     text-indent: 45px;
     font-size: 20px;
     margin-bottom: 20px;

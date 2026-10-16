@@ -23,7 +23,7 @@
           <li class="footer_title"><span>Member</span></li>
           <li><NuxtLink to="/register">Create an account</NuxtLink></li>
           <li><NuxtLink to="/login">Log in</NuxtLink></li>
-          <li><NuxtLink to="/uc/safe">Security settings</NuxtLink></li>
+          <li><NuxtLink to="/uc">Security settings</NuxtLink></li>
         </ul>
       </div>
     </div>

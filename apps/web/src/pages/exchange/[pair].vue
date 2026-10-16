@@ -265,6 +265,7 @@ import { formatDateTime, formatMoneyEnUs } from '~/utils/format'
 import { compareMoney, formatMoney, parseDecimal } from '~/utils/money'
 import { useExchangeSocket, type ExchangeSocket, type SocketEnvelope } from '~/composables/useExchangeSocket'
 
+const MARKETS_PATH = '/market/markets'
 const TICKERS_PATH = '/market/tickers'
 const BALANCES_PATH = '/uc/wallet/accounts'
 const KLINE_PATH = '/market/kline'

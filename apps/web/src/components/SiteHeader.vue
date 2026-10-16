@@ -74,7 +74,7 @@ import { ArrowDown, Menu, User } from '@element-plus/icons-vue'
 // Exchange, Announcements, and Help.
 const navItems = [
   { to: '/', label: 'Home' },
-  { to: '/exchange', label: 'Exchange' },
+  { to: '/exchange/btc_usdt', label: 'Exchange' },
   { to: '/notice', label: 'Announcements' },
   { to: '/help', label: 'Help' },
 ] as const

@@ -9,7 +9,7 @@
       <div class="footer_right">
         <ul>
           <li class="footer_title"><span>Exchange</span></li>
-          <li><NuxtLink to="/exchange">Trade a Market</NuxtLink></li>
+          <li><NuxtLink to="/exchange/btc_usdt">Trade a Market</NuxtLink></li>
           <li><NuxtLink to="/help">How to place an order</NuxtLink></li>
           <li><NuxtLink to="/help">Coin guides</NuxtLink></li>
         </ul>

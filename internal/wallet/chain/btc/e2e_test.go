@@ -303,18 +303,12 @@ func TestE2EBTC(t *testing.T) {
 	runE2E(t, keys.BTC, envOr("MAL_TEST_BTCD_URL", "https://127.0.0.1:18556"))
 }
 
-// TestE2ELTC is skipped: ltcd v0.23.6 (pinned in deploy/chains) is
-// broken for every versionbits-dependent RPC. `generate` panics with a
-// nil-pointer dereference in blockchain.deploymentChecker.HasStarted
-// (versionbits.go:160) on the first call, and getblockchaininfo fails
-// with "Unknown deployment 5 detected" — both from the same upstream
-// defect. No newer ltcd tag exists to bump to.
-//
-// LTC signing/derivation/address logic is fully covered by unit tests:
-// TestLTCDerivation (ltc1 shape), TestDecodeScriptAddrForms (ltc1/L/M
-// forms), TestBuildSignChangePath (BTC+LTC loop), TestDepositAmountExactness.
-// Only the mining-based live integration is unavailable until upstream
-// fixes the versionbits crash.
+// TestE2ELTC runs the full E2E against ltcd simnet. The v0.23.6
+// versionbits panic on `generate` did not reproduce in the live
+// deployment (blocks were mined successfully via `generate`), and the
+// getblockchaininfo failure is worked around via the MAL_WALLET_NET
+// hint (see btc.go resolveNet). Unskipped 2026-10-16 after live
+// verification.
 func TestE2ELTC(t *testing.T) {
-	t.Skip("ltcd v0.23.6 versionbits nil-deref: `generate` panics and getblockchaininfo errors; no newer ltcd tag to bump to. LTC logic covered by unit tests.")
+	runE2E(t, keys.LTC, envOr("MAL_TEST_LTCD_URL", "https://127.0.0.1:19332"))
 }

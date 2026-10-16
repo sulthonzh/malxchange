@@ -406,7 +406,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
 
   .topnav {
     width: 100%;
-    line-height: 40px;
+    line-height: 1.7;
     height: 40px;
     margin: 0 auto;
 
@@ -485,7 +485,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
 
   .subslogan {
     text-align: center;
-    font-size: 20px;
+    font-size: 16px;
     color: var(--text-secondary);
     position: absolute;
     top: 130px;
@@ -530,17 +530,20 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
       overflow: hidden;
 
       .agent-item {
-        height: 54px;
-        background: #151f2c;
-        width: 210px;
-        margin-left: 10px;
+        height: 64px;
+        background: #ffffff;
+        width: 220px;
+        margin-left: 12px;
         padding-right: 15px;
-        border: 1px solid #151f2c;
-        transition: all 0.5s;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        transition: all 0.3s;
         display: flex;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
 
         &:hover {
-          border: 1px solid rgb(240, 185, 11);
+          border: 1px solid #1e293b;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
         }
 
         .agent-img {
@@ -590,7 +593,7 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
 
   .page2nav {
     line-height: 50px;
-    font-size: 20px;
+    font-size: 16px;
     background: var(--home-tabs-bg);
     min-width: 864px;
     display: flex;
@@ -695,10 +698,10 @@ const byTurnover = (a: MarketRow, b: MarketRow): number =>
   }
 
   .detail {
-    line-height: 40px;
+    line-height: 1.7;
     letter-spacing: 0.5px;
-    text-indent: 45px;
-    font-size: 20px;
+    
+    font-size: 16px;
     margin-bottom: 20px;
     color: var(--text-secondary);
     text-align: justify;

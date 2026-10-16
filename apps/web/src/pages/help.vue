@@ -83,7 +83,7 @@ async function load(): Promise<void> {
     justify-content: center;
     align-items: center;
     height: 320px;
-    background: linear-gradient(to right, #001a40, #000109);
+    background: linear-gradient(to right, #f8fafc, #e2e8f0);
     color: var(--text);
     font-size: 40px;
   }

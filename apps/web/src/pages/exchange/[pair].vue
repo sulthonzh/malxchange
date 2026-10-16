@@ -269,6 +269,7 @@ const MARKETS_PATH = '/market/markets'
 const TICKERS_PATH = '/market/tickers'
 const BALANCES_PATH = '/uc/wallet/accounts'
 const KLINE_PATH = '/market/kline'
+const ORDERS_PATH = '/uc/orders'
 const TRADES_LIMIT = 30
 
 const { apiFetch } = useApi()

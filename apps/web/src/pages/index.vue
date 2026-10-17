@@ -119,16 +119,16 @@
     </div>
 
     <div class="section brand">
-      <p class="title">Built for traders</p>
+      <p class="title">Open-source crypto exchange</p>
       <p class="subtitle">Simple, secure, and designed around you.</p>
       <div class="detail">
-        malxchange gives you a clean, fast way to trade crypto. No clutter,
-        no confusing jargon — just the markets, your orders, and your
-        balances, all in one place.
+        malxchange is a full-featured spot exchange you can run anywhere.
+        Real matching engine, live charts, on-chain wallets — all open
+        source and light enough for a single VPS.
       </div>
       <div class="detail">
-        Start in seconds with just an email. Browse live markets before you
-        sign up, deposit with a single click, and trade with confidence.
+        Start trading in seconds with just an email. Browse live markets
+        before you sign up, deposit on-chain, and trade with confidence.
       </div>
     </div>
 

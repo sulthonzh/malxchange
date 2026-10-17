@@ -275,9 +275,6 @@ Everything on a single Hetzner CX22 (4GB RAM). The full stack uses ~1.1GB:
 
 **Pros:** Managed DB backups, instant frontend deploys, preview URLs. **Cons:** Multi-vendor, higher latency to managed services.
 
-### Option C: 100% Free (Demo Only)
-Vercel (frontend) + Neon/Supabase (Postgres) + Upstash (Kafka) + Render/Railway free tier (Go backend). Suitable for demos; free tiers sleep or have limits.
-
 See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed setup guides.
 
 ---

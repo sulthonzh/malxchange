@@ -254,9 +254,31 @@ cd apps/admin && npm run dev
 
 ## Deployment Options
 
-See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for:
-- **Option A**: All-in-one VPS (~€4/month)
-- **Option B**: Split — Vercel frontends + managed Postgres/Kafka (~€11/month)
+### Option A: All-in-One VPS (~€4/month)
+Everything on a single Hetzner CX22 (4GB RAM). The full stack uses ~1.1GB:
+- 5 Go microservices (~80MB total)
+- PostgreSQL 17 (~250MB)
+- Redpanda/Kafka (~400MB)
+- Chain nodes ltcd/btcd (~170MB)
+- Nuxt frontends (~150MB)
+
+**Pros:** Cheapest, simplest, lowest latency. **Cons:** Self-managed backups, single point of failure.
+
+### Option B: Split with Free Tiers (~€0-4/month)
+- **Frontend → Vercel (free):** Deploy `apps/web` and `apps/admin` as separate Vercel projects. Set env vars:
+  - `NUXT_PUBLIC_API_BASE_URL=https://your-api-domain/api`
+  - `NUXT_PUBLIC_WS_URL=wss://your-api-domain/ws`
+  - `NUXT_PUBLIC_ADMIN_API_BASE_URL=https://your-admin-api-domain/api`
+- **PostgreSQL → Free tier:** Neon (free 512MB), Supabase (free 500MB), or Aiven free trial. Set `MAL_PG_HOST`, `MAL_PG_SSLMODE=require`.
+- **Kafka → Free tier:** Upstash Kafka (free 10k msgs/day) or Aiven free trial. Or self-host Redpanda on the VPS.
+- **Backend → VPS (€4/mo):** 5 Go services + Caddy + chain nodes only.
+
+**Pros:** Managed DB backups, instant frontend deploys, preview URLs. **Cons:** Multi-vendor, higher latency to managed services.
+
+### Option C: 100% Free (Demo Only)
+Vercel (frontend) + Neon/Supabase (Postgres) + Upstash (Kafka) + Render/Railway free tier (Go backend). Suitable for demos; free tiers sleep or have limits.
+
+See [DEPLOYMENT_OPTIONS.md](DEPLOYMENT_OPTIONS.md) for detailed setup guides.
 
 ---
 

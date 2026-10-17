@@ -26,12 +26,15 @@ An open-source crypto exchange platform designed for **low-resource environments
 - **Order history** — current and historical orders with fill details
 
 ### Admin Panel
-*Admin panel screenshots coming soon*
-- **Dashboard** — platform overview, key metrics
-- **Member management** — search, freeze, review members
-- **Order oversight** — monitor all orders and trades
-- **Reconciliation** — ledger vs journal integrity checks
-- **Announcements** — publish platform notices
+![Admin Dashboard](docs/screenshots/admin-dashboard.png)
+- **Dashboard** — platform overview with granular permission chips (40+ permissions: member search, withdrawals, reconciliation, audit log, etc.)
+- **Member management** — search by email/ID, view identity/status/KYC, freeze accounts (revokes live sessions)
+- **KYC review** — compliance workflow for identity verification
+- **Finance** — withdrawal approval queue, manual balance adjustments with audit trail
+- **Operations** — matching engine status, ledger vs journal reconciliation (fold invariant), hot-wallet vs chain balance, incident tracking
+- **Content** — announcements, help articles & categories
+- **System** — employee accounts, roles & permissions
+- **Audit log** — every admin action tracked
 - **TOTP 2FA** — hardware-grade admin security (see setup below)
 
 ### Security

@@ -310,5 +310,5 @@ func TestE2EBTC(t *testing.T) {
 // hint (see btc.go resolveNet). Unskipped 2026-10-16 after live
 // verification.
 func TestE2ELTC(t *testing.T) {
-	runE2E(t, keys.LTC, envOr("MAL_TEST_LTCD_URL", "https://127.0.0.1:19332"))
+	runE2E(t, keys.LTC, envOr("MAL_TEST_LTCD_URL", "https://127.0.0.1:19556"))
 }

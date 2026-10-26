@@ -379,7 +379,6 @@ func TestMemberTOTPResetStepUpAuditPassthrough(t *testing.T) {
 	// api's KYC gate passes through and is not audited (the reset
 	// never happened).
 	stub.notKYCVerified["m-10"] = "authenticator reset requires a KYC-verified member"
-	s.clearConsumedStep(t, compliance.Email) // the good reset above consumed the step (#103)
 	code, err = totpNow(compliance.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)

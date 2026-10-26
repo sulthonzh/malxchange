@@ -22,15 +22,22 @@ const (
 	errStepUpInvalid  = "That code is not valid. Check your authenticator app and try again."
 )
 
-// consumeTOTPStep claims the step atomically: false means the same (or
-// an older) step already verified — a replay inside the window — or the
-// storage failed; both refuse the action (fail closed).
+// consumeTOTPStep advances the consumption marker monotonically: false
+// means an OLDER step than any already used — a replay after the window
+// moved on — or the storage failed; both refuse the action (fail
+// closed). A code from the SAME step verifies again on purpose: two
+// legitimate actions inside one 30-second step present the same code,
+// and rejecting them would lock every burst workflow (onboarding a
+// batch of employees, bind-then-withdraw) until the next tick. The
+// residual exposure — the same still-valid code used twice inside its
+// window — is inherent to TOTP at step granularity and is bounded by
+// the rate limits (audit issue #104).
 func (s *Server) consumeTOTPStep(ctx context.Context, employeeID string, step uint64) bool {
 	if s.pool == nil { // no storage to record the claim in: refuse (fail closed)
 		return false
 	}
 	tag, err := s.pool.Exec(ctx,
-		`UPDATE employees SET last_used_step = $2 WHERE id = $1 AND last_used_step < $2`,
+		`UPDATE employees SET last_used_step = $2 WHERE id = $1 AND last_used_step <= $2`,
 		employeeID, int64(step))
 	if err != nil {
 		s.log.Error("admin: consume authenticator step", "err", err)

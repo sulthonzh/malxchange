@@ -476,9 +476,6 @@ func TestManualAdjustmentJourney(t *testing.T) {
 	}
 
 	// Replaying the same key is a no-op: applied=false, no movement.
-	// The handler is idempotent, the step-up code is not (#103): clear
-	// the consumed step so the replayed request passes the gate again.
-	auth.clearConsumedStep(t, fin.Email)
 	status, raw = call(body)
 	if status != http.StatusOK || !strings.Contains(raw, `"applied":false`) {
 		t.Fatalf("replay = %d %s, want 200 applied:false", status, raw)
@@ -530,9 +527,7 @@ func TestManualAdjustmentJourney(t *testing.T) {
 	}
 
 	// A negative adjustment moves the balance down — support cases
-	// debit as well as credit. Earlier journeys consumed their steps
-	// (#103); clear so this one passes the gate.
-	auth.clearConsumedStep(t, fin.Email)
+	// debit as well as credit.
 	neg := fmt.Sprintf(`{"member":"petra","coin":"USDT","amount":"-7","reason":"fee correction","key":"case-4183","code":%q}`, mustCode(t, fin))
 	if status, raw = call(neg); status != http.StatusOK {
 		t.Fatalf("negative adjust = %d %s, want 200", status, raw)

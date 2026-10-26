@@ -193,19 +193,6 @@ func totpNow(secret string) (string, error) {
 	return auth.TOTPCode(secret, time.Now())
 }
 
-// clearConsumedStep resets an Employee's TOTP consumption marker (audit
-// issue #103) so a later action in the same test is not itself a
-// replay: production actions are naturally spaced by the 30-second
-// step, test journeys are not. Same doctrine as shiftSessions —
-// deterministic state surgery, no sleeps.
-func (s *itStack) clearConsumedStep(t *testing.T, email string) {
-	t.Helper()
-	if _, err := s.pool.Exec(context.Background(),
-		`UPDATE employees SET last_used_step = 0 WHERE email = $1`, email); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // bootstrap creates the first Employee through the internal RPC the
 // installer drives.
 func (s *itStack) bootstrap(t *testing.T, email, password string) (int, string) {
@@ -608,7 +595,6 @@ func TestLoginRequiresTOTPAndLocksAfterFiveFailures(t *testing.T) {
 
 	// The lock lifts when the window slides out (test window 1.5s).
 	time.Sleep(s.env.LockoutWindow + 300*time.Millisecond)
-	s.clearConsumedStep(t, p.Email) // the pre-lock login consumed `good` (#103)
 	good, err = totpNow(p.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)
@@ -622,9 +608,14 @@ func TestLoginRequiresTOTPAndLocksAfterFiveFailures(t *testing.T) {
 
 // TestEmployeeLoginConsumesTOTPStep pins login code consumption (audit
 // issue #103): the first login with a code passes, logging in again
-// with the SAME code — still inside the +/-1-step window — is a replay
-// and is refused exactly like a wrong code.
-func TestEmployeeLoginConsumesTOTPStep(t *testing.T) {
+// TestEmployeeLoginTOTPReplayProtection pins the monotonic consumption
+// semantics (#103): the same code verifies again while its step is
+// current (two legitimate actions inside one 30-second step present the
+// same code), and a code from an older step than any already used is a
+// replay after the window moved on — refused exactly like a wrong code.
+// The window advance is simulated deterministically by bumping the
+// marker past the used step (no sleeps).
+func TestEmployeeLoginTOTPReplayProtection(t *testing.T) {
 	s := newStack(t)
 	p := s.fullyProvisioned(t, "replay@it.test")
 
@@ -638,8 +629,19 @@ func TestEmployeeLoginConsumesTOTPStep(t *testing.T) {
 	}
 	_ = sessionCookieOf(t, resp)
 
+	// Same step, same code: a second legitimate action — allowed.
+	if status, _, raw := p.login(t, s, code); status != http.StatusOK {
+		t.Fatalf("same-step second login: %d %s, want 200", status, raw)
+	}
+
+	// The window slides past the used step: the same code is now a
+	// replay of an older step and must be refused.
+	if _, err := s.pool.Exec(context.Background(),
+		`UPDATE employees SET last_used_step = last_used_step + 1 WHERE email = $1`, p.Email); err != nil {
+		t.Fatal(err)
+	}
 	if status, _, raw := p.login(t, s, code); status != http.StatusUnauthorized {
-		t.Fatalf("replayed code login: %d %s, want 401", status, raw)
+		t.Fatalf("older-step replayed code login: %d %s, want 401", status, raw)
 	}
 }
 
@@ -668,9 +670,7 @@ func TestSessionExpiresIdleAndAbsolute(t *testing.T) {
 	}
 
 	// A fresh login still works (the shift expired the session, not the
-	// surface). The first login consumed `good` (#103), so clear the
-	// marker and mint again.
-	s.clearConsumedStep(t, p.Email)
+	// surface).
 	good, err = totpNow(p.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)

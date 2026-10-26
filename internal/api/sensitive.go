@@ -779,10 +779,13 @@ func (g securityGate) VerifyAuthenticatorCode(ctx context.Context, memberID, cod
 	if !ok {
 		return false, nil
 	}
-	// Consume the step: a replay of the same code inside the window
-	// finds last_used_step >= step and is refused (#103).
+	// Advance the consumption marker monotonically: a code from an
+	// OLDER step than any already used is a replay after the window
+	// moved on and is refused; the same step's code verifies again —
+	// two legitimate actions inside one 30-second step present the same
+	// code (#103).
 	tag, err := g.pool.Exec(ctx,
-		`UPDATE authenticator_bindings SET last_used_step = $2 WHERE member_id = $1 AND last_used_step < $2`,
+		`UPDATE authenticator_bindings SET last_used_step = $2 WHERE member_id = $1 AND last_used_step <= $2`,
 		memberID, int64(step))
 	if err != nil {
 		return false, fmt.Errorf("api: gate authenticator consume: %w", err)

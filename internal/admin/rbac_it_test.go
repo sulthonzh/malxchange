@@ -379,7 +379,6 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	}
 
 	// Duplicate email is a conflict.
-	s.clearConsumedStep(t, root.Email) // the create above consumed the step (#103)
 	code, err = totpNow(root.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)
@@ -412,7 +411,6 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 		fmt.Sprintf(`{"code":%q}`, wrongCodeOf(t, root.TOTPSecr)), cookie); status != http.StatusUnauthorized {
 		t.Fatalf("reset-password with wrong code: %d %s", status, raw)
 	}
-	s.clearConsumedStep(t, root.Email) // earlier step-ups consumed their steps (#103)
 	code, err = totpNow(root.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)
@@ -440,7 +438,6 @@ func TestEmployeeLifecycleWithStepUp(t *testing.T) {
 	}
 
 	// TOTP reset (Step-up): binding gone, list shows it.
-	s.clearConsumedStep(t, root.Email) // earlier step-ups consumed their steps (#103)
 	code, err = totpNow(root.TOTPSecr)
 	if err != nil {
 		t.Fatal(err)

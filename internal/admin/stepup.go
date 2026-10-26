@@ -10,6 +10,7 @@
 package admin
 
 import (
+	"context"
 	"net/http"
 	"time"
 
@@ -21,6 +22,23 @@ const (
 	errStepUpInvalid  = "That code is not valid. Check your authenticator app and try again."
 )
 
+// consumeTOTPStep claims the step atomically: false means the same (or
+// an older) step already verified — a replay inside the window — or the
+// storage failed; both refuse the action (fail closed).
+func (s *Server) consumeTOTPStep(ctx context.Context, employeeID string, step uint64) bool {
+	if s.pool == nil { // no storage to record the claim in: refuse (fail closed)
+		return false
+	}
+	tag, err := s.pool.Exec(ctx,
+		`UPDATE employees SET last_used_step = $2 WHERE id = $1 AND last_used_step < $2`,
+		employeeID, int64(step))
+	if err != nil {
+		s.log.Error("admin: consume authenticator step", "err", err)
+		return false
+	}
+	return tag.RowsAffected() == 1
+}
+
 // requireStepUp verifies a fresh authenticator code against the
 // CALLER's bound TOTP secret at action time and answers the refusal
 // itself. Callers hand it the code field of their own request body.
@@ -30,7 +48,12 @@ func (s *Server) requireStepUp(w http.ResponseWriter, r *http.Request, code stri
 		WriteError(w, http.StatusUnauthorized, errStepUpRequired)
 		return false
 	}
-	if emp.TOTPSecret == "" || !auth.VerifyTOTP(emp.TOTPSecret, code, time.Now()) {
+	if emp.TOTPSecret == "" {
+		WriteError(w, http.StatusUnauthorized, errStepUpInvalid)
+		return false
+	}
+	step, ok := auth.VerifyTOTPStep(emp.TOTPSecret, code, time.Now())
+	if !ok || !s.consumeTOTPStep(r.Context(), emp.ID, step) {
 		WriteError(w, http.StatusUnauthorized, errStepUpInvalid)
 		return false
 	}

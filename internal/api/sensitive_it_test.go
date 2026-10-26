@@ -9,6 +9,7 @@
 package api
 
 import (
+	"context"
 	"encoding/base64"
 	"net/http"
 	"regexp"
@@ -204,6 +205,36 @@ func TestAuthenticatorBindUnbindAndGate(t *testing.T) {
 	}
 	if got := s.security(token)["authenticatorBound"]; got != false {
 		t.Fatalf("authenticatorBound after unbind = %v", got)
+	}
+}
+
+// TestWithdrawalRejectsReplayedTOTPCode pins the consuming withdrawal
+// gate (audit issue #103): the first verification of a code passes and
+// records the step; replaying the SAME code — still inside the +/-1
+// -step window — finds the step consumed and is refused. The gated
+// withdrawal endpoint is only wired with the stub gate in the funds IT
+// harness, so the production securityGate is exercised directly over
+// the real api schema and binding row.
+func TestWithdrawalRejectsReplayedTOTPCode(t *testing.T) {
+	s := newStack(t)
+	email := "withdraw-gate@example.com"
+	token, memberID := s.register2(email, "the-password")
+	secret := s.bindAuthenticator(token, email)
+
+	gate := securityGate{pool: s.pool}
+	code, err := auth.TOTPCode(secret, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ok, err := gate.VerifyAuthenticatorCode(context.Background(), memberID, code)
+	if err != nil || !ok {
+		t.Fatalf("first verification: ok=%v err=%v, want true/nil", ok, err)
+	}
+
+	ok, err = gate.VerifyAuthenticatorCode(context.Background(), memberID, code)
+	if err != nil || ok {
+		t.Fatalf("replayed code verification: ok=%v err=%v, want false/nil", ok, err)
 	}
 }
 

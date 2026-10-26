@@ -193,6 +193,19 @@ func totpNow(secret string) (string, error) {
 	return auth.TOTPCode(secret, time.Now())
 }
 
+// clearConsumedStep resets an Employee's TOTP consumption marker (audit
+// issue #103) so a later action in the same test is not itself a
+// replay: production actions are naturally spaced by the 30-second
+// step, test journeys are not. Same doctrine as shiftSessions —
+// deterministic state surgery, no sleeps.
+func (s *itStack) clearConsumedStep(t *testing.T, email string) {
+	t.Helper()
+	if _, err := s.pool.Exec(context.Background(),
+		`UPDATE employees SET last_used_step = 0 WHERE email = $1`, email); err != nil {
+		t.Fatal(err)
+	}
+}
+
 // bootstrap creates the first Employee through the internal RPC the
 // installer drives.
 func (s *itStack) bootstrap(t *testing.T, email, password string) (int, string) {
@@ -595,11 +608,39 @@ func TestLoginRequiresTOTPAndLocksAfterFiveFailures(t *testing.T) {
 
 	// The lock lifts when the window slides out (test window 1.5s).
 	time.Sleep(s.env.LockoutWindow + 300*time.Millisecond)
+	s.clearConsumedStep(t, p.Email) // the pre-lock login consumed `good` (#103)
+	good, err = totpNow(p.TOTPSecr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	status, resp, raw = p.login(t, s, good)
 	if status != http.StatusOK {
 		t.Fatalf("login after lock window: %d %s", status, raw)
 	}
 	_ = sessionCookieOf(t, resp)
+}
+
+// TestEmployeeLoginConsumesTOTPStep pins login code consumption (audit
+// issue #103): the first login with a code passes, logging in again
+// with the SAME code — still inside the +/-1-step window — is a replay
+// and is refused exactly like a wrong code.
+func TestEmployeeLoginConsumesTOTPStep(t *testing.T) {
+	s := newStack(t)
+	p := s.fullyProvisioned(t, "replay@it.test")
+
+	code, err := totpNow(p.TOTPSecr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status, resp, raw := p.login(t, s, code)
+	if status != http.StatusOK {
+		t.Fatalf("first login with code: %d %s", status, raw)
+	}
+	_ = sessionCookieOf(t, resp)
+
+	if status, _, raw := p.login(t, s, code); status != http.StatusUnauthorized {
+		t.Fatalf("replayed code login: %d %s, want 401", status, raw)
+	}
 }
 
 func TestSessionExpiresIdleAndAbsolute(t *testing.T) {
@@ -627,7 +668,13 @@ func TestSessionExpiresIdleAndAbsolute(t *testing.T) {
 	}
 
 	// A fresh login still works (the shift expired the session, not the
-	// surface).
+	// surface). The first login consumed `good` (#103), so clear the
+	// marker and mint again.
+	s.clearConsumedStep(t, p.Email)
+	good, err = totpNow(p.TOTPSecr)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if status, _, _ := p.login(t, s, good); status != http.StatusOK {
 		t.Fatalf("login after expiry test: %d", status)
 	}

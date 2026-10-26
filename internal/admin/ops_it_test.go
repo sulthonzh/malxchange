@@ -292,6 +292,9 @@ func TestOpsTransfersWithStepUp(t *testing.T) {
 
 	fresh := func() string {
 		t.Helper()
+		// Each journey step is its own consumption (#103): without this,
+		// a second fresh() within the same 30-second step is a replay.
+		o.st.clearConsumedStep(t, p.Email)
 		code, err := totpNow(p.TOTPSecr)
 		if err != nil {
 			t.Fatal(err)
